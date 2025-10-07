@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: face-mask-detection
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONPATH
+        value: /app
