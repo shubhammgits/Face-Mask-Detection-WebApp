@@ -318,7 +318,13 @@ I've identified and fixed several issues that were causing the frontend to be "b
 - Added better memory management with explicit garbage collection
 - Enhanced model loading and error checking
 
-### 5. Deployment Scripts
+### 5. Detection Box Rendering Fixes
+- Fixed detection box positioning to properly display red frames for unmasked faces and green frames for masked faces
+- Improved scaling calculations to ensure boxes align correctly with detected faces
+- Added debugging information to help troubleshoot rendering issues
+- Enhanced error handling for cases where detection fails
+
+### 6. Deployment Scripts
 - Added redeployment scripts for both Windows (.bat) and Unix (.sh) systems
 
 ## Deployment Instructions
@@ -326,7 +332,7 @@ I've identified and fixed several issues that were causing the frontend to be "b
 1. Commit your changes:
    ```bash
    git add .
-   git commit -m "Fix frontend issues and improve live detection"
+   git commit -m "Fix detection box rendering issues"
    ```
 
 2. Push to your Render repository:
@@ -344,6 +350,8 @@ If you still experience issues:
 2. Ensure your model file (`best_mask_model.h5`) is properly included
 3. Verify that all required files are present in the repository
 4. Check that the Render service is using the "standard" plan
+5. Open browser developer tools (F12) and check the Console tab for JavaScript errors
+6. Check the Network tab to verify that requests to `/process_frame` are successful
 
 The application should now properly detect faces in both uploaded images and live camera feed, displaying green boxes for masked faces and red boxes for unmasked faces with accuracy percentages.
 

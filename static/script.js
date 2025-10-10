@@ -263,6 +263,7 @@ async function startCamera() {
         videoElement.onloadedmetadata = () => {
             videoElement.play();
             
+            // Set canvas dimensions
             canvas.width = videoElement.videoWidth || 640;
             canvas.height = videoElement.videoHeight || 480;
             
@@ -281,7 +282,10 @@ async function startCamera() {
             isStreaming = true;
             updateCameraStatus('Live streaming...', 'active');
             
-            startRealTimeDetection();
+            // Add a small delay before starting detection to ensure video is ready
+            setTimeout(() => {
+                startRealTimeDetection();
+            }, 1000);
         };
         
         videoElement.onerror = (error) => {
@@ -365,24 +369,37 @@ function startRealTimeDetection() {
         clearInterval(detectionInterval);
     }
     
+    // Start detection with a reasonable interval
     detectionInterval = setInterval(async () => {
-        if (isStreaming && videoElement && videoElement.readyState === 4) {
+        if (isStreaming && videoElement && videoElement.readyState >= 2) {
             await processVideoFrame();
         }
-    }, 1000); // Changed from 1500 to 1000 for better responsiveness
+    }, 1000); // Process every 1 second
 }
 
 async function processVideoFrame() {
     try {
         console.log("Processing video frame...");
         
+        // Check if video is ready
+        if (!videoElement || videoElement.readyState < 2) {
+            console.log("Video not ready yet");
+            return;
+        }
+        
         // Create a temporary canvas to capture the video frame
         const tempCanvas = document.createElement('canvas');
         const tempContext = tempCanvas.getContext('2d');
         
         // Set canvas dimensions to match video
-        tempCanvas.width = videoElement.videoWidth || 640;
-        tempCanvas.height = videoElement.videoHeight || 480;
+        const videoWidth = videoElement.videoWidth || videoElement.offsetWidth || 640;
+        const videoHeight = videoElement.videoHeight || videoElement.offsetHeight || 480;
+        
+        tempCanvas.width = videoWidth;
+        tempCanvas.height = videoHeight;
+        
+        console.log("Canvas dimensions:", tempCanvas.width, "x", tempCanvas.height);
+        console.log("Video dimensions:", videoWidth, "x", videoHeight);
         
         // Draw the current video frame to the canvas
         tempContext.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
@@ -416,6 +433,7 @@ async function processVideoFrame() {
                 }
             } else {
                 console.log("Failed to create blob from canvas");
+                clearDetectionBoxes();
             }
         }, 'image/jpeg', 0.8); // Reduced quality for faster processing
         
@@ -432,17 +450,33 @@ function clearDetectionBoxes() {
 
 function drawDetectionBoxes(detections, frameWidth, frameHeight) {
     console.log("Drawing detection boxes:", detections);
+    console.log("Frame dimensions:", frameWidth, "x", frameHeight);
     
     // Clear existing boxes
     clearDetectionBoxes();
     
-    // Get the camera view dimensions
+    // If no detections, exit early
+    if (!detections || detections.length === 0) {
+        console.log("No detections to draw");
+        return;
+    }
+    
+    // Get the camera view and video elements
     const cameraView = elements.cameraView;
+    const videoElement = elements.videoStream;
+    
+    // Get dimensions
+    const videoRect = videoElement.getBoundingClientRect();
     const cameraRect = cameraView.getBoundingClientRect();
     
+    console.log("Video rect:", videoRect);
+    console.log("Camera rect:", cameraRect);
+    
     // Calculate scaling factors
-    const scaleX = cameraRect.width / frameWidth;
-    const scaleY = cameraRect.height / frameHeight;
+    const scaleX = videoRect.width / frameWidth;
+    const scaleY = videoRect.height / frameHeight;
+    
+    console.log("Scale factors:", scaleX, scaleY);
     
     detections.forEach((detection) => {
         const box = document.createElement('div');
@@ -453,6 +487,8 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
         const y = detection.bbox[1] * scaleY;
         const width = detection.bbox[2] * scaleX;
         const height = detection.bbox[3] * scaleY;
+        
+        console.log("Detection box:", detection, "Scaled:", x, y, width, height);
         
         // Set box styles
         const borderColor = detection.label === 'Masked' ? '#00ff00' : '#ff0000';
@@ -467,6 +503,7 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
             border-radius: 4px;
             pointer-events: none;
             z-index: 1000;
+            box-sizing: border-box;
         `;
         
         // Create label
@@ -485,6 +522,7 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
             font-weight: bold;
             white-space: nowrap;
             font-family: 'Inter', sans-serif;
+            box-sizing: border-box;
         `;
         
         box.appendChild(label);
