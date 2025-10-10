@@ -374,6 +374,7 @@ function startRealTimeDetection() {
 
 async function processVideoFrame() {
     try {
+        console.log("Processing video frame...");
         const tempCanvas = document.createElement('canvas');
         const tempContext = tempCanvas.getContext('2d');
         
@@ -386,6 +387,7 @@ async function processVideoFrame() {
         
         tempCanvas.toBlob(async (blob) => {
             if (blob) {
+                console.log("Sending frame to server...");
                 const formData = new FormData();
                 formData.append('frame', blob, 'frame.jpg');
                 
@@ -396,13 +398,18 @@ async function processVideoFrame() {
                     });
                     
                     const result = await response.json();
+                    console.log("Received response from server:", result);
                     
                     if (result.success && result.detections) {
                         drawDetectionBoxes(result.detections);
+                    } else {
+                        console.log("No detections or error in response");
                     }
                 } catch (error) {
                     console.error('Frame processing error:', error);
                 }
+            } else {
+                console.log("Failed to create blob from canvas");
             }
         }, 'image/jpeg', 0.95);
         
@@ -412,6 +419,7 @@ async function processVideoFrame() {
 }
 
 function drawDetectionBoxes(detections) {
+    console.log("Drawing detection boxes:", detections);
     const videoRect = videoElement.getBoundingClientRect();
     const cameraRect = elements.cameraView.getBoundingClientRect();
     
