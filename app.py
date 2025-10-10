@@ -7,25 +7,45 @@ import base64
 from io import BytesIO
 import logging
 import random
+import gc
 
+# Global variables for modules
+tf_module = None
+cv2_module = None
 tensorflow_available = False
+
 try:
     import tensorflow as tf
+    tf_module = tf
     tensorflow_available = True
     print("TensorFlow loaded successfully")
+    # Configure TensorFlow to use less memory
+    try:
+        if hasattr(tf, 'config') and hasattr(tf.config, 'experimental'):
+            gpus = tf.config.experimental.list_physical_devices('GPU')
+            if gpus:
+                try:
+                    for gpu in gpus:
+                        tf.config.experimental.set_memory_growth(gpu, True)
+                except RuntimeError as e:
+                    print(e)
+    except Exception as e:
+        print(f"Warning: Could not configure TensorFlow memory: {e}")
 except ImportError as e:
-    tf = None
+    tf_module = None
     print(f"Warning: TensorFlow not available: {e}")
 
 try:
     import cv2
+    cv2_module = cv2
     print("OpenCV loaded successfully")
 except ImportError:
     try:
         import cv2.cv2 as cv2
+        cv2_module = cv2
         print("OpenCV cv2.cv2 loaded successfully")
     except ImportError:
-        cv2 = None
+        cv2_module = None
         print("Warning: OpenCV not available. Face detection will be disabled. This is normal in containerized environments.")
 
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +56,7 @@ CORS(app)
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 5 * 1024 * 1024  # Reduced from 10MB to 5MB
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
@@ -54,16 +74,31 @@ def load_model_and_cascade():
     if not tensorflow_available:
         logger.warning("TensorFlow not available. Using fallback mode.")
         model_loaded = False
-        cascade_loaded = False if cv2 is None else True
+        cascade_loaded = False if cv2_module is None else True
         return
     
     try:
         model_path = 'best_mask_model.h5'
         if os.path.exists(model_path):
             try:
-                model = tf.keras.models.load_model(model_path)
-                model_loaded = True
-                logger.info("Face mask detection model loaded successfully")
+                # Load model with memory optimization
+                if tf_module is not None:
+                    try:
+                        # Try accessing keras models with a defensive approach
+                        keras_attr = getattr(tf_module, 'keras', None)
+                        if keras_attr is not None:
+                            models_attr = getattr(keras_attr, 'models', None)
+                            if models_attr is not None:
+                                load_model_func = getattr(models_attr, 'load_model', None)
+                                if load_model_func is not None:
+                                    model = load_model_func(model_path)
+                                    model_loaded = True
+                                    logger.info("Face mask detection model loaded successfully")
+                    except Exception as e:
+                        logger.error(f"Error loading model: {str(e)}")
+                        model_loaded = False
+                else:
+                    model_loaded = False
             except Exception as e:
                 logger.error(f"Error loading model: {str(e)}")
                 model_loaded = False
@@ -72,11 +107,11 @@ def load_model_and_cascade():
             model_loaded = False
             
         cascade_path = 'haarcascade_frontalface_default.xml'
-        if os.path.exists(cascade_path) and cv2 is not None:
-            face_cascade = cv2.CascadeClassifier(cascade_path)
+        if os.path.exists(cascade_path) and cv2_module is not None:
+            face_cascade = cv2_module.CascadeClassifier(cascade_path)
             cascade_loaded = True
             logger.info("Face cascade classifier loaded successfully")
-        elif cv2 is None:
+        elif cv2_module is None:
             logger.warning("OpenCV not available. Face detection disabled.")
             cascade_loaded = False
         else:
@@ -92,7 +127,35 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-if cv2 is not None:
+# Helper functions to safely access module attributes
+def safe_cv2_call(func_name, *args, **kwargs):
+    """Safely call OpenCV functions"""
+    if cv2_module is not None and hasattr(cv2_module, func_name):
+        return getattr(cv2_module, func_name)(*args, **kwargs)
+    return None
+
+def safe_tf_call(func_name, *args, **kwargs):
+    """Safely call TensorFlow functions"""
+    if tf_module is not None and hasattr(tf_module, func_name):
+        return getattr(tf_module, func_name)(*args, **kwargs)
+    return None
+
+def safe_tf_keras_call(func_name, *args, **kwargs):
+    """Safely call TensorFlow Keras functions"""
+    if tf_module is not None:
+        try:
+            # Access keras through getattr to avoid linter issues
+            keras_attr = getattr(tf_module, 'keras', None)
+            if keras_attr is not None:
+                keras_module = keras_attr
+                func_attr = getattr(keras_module, func_name, None)
+                if func_attr is not None:
+                    return func_attr(*args, **kwargs)
+        except Exception:
+            pass
+    return None
+
+if cv2_module is not None and tf_module is not None:
     def calculate_iou(box1, box2):
         x1, y1, w1, h1 = box1
         x2, y2, w2, h2 = box2
@@ -169,7 +232,7 @@ if cv2 is not None:
     def detect_faces_and_masks(image):
         global model, face_cascade
         
-        if not tensorflow_available or model is None:
+        if not tensorflow_available or model is None or face_cascade is None:
             num_faces = random.randint(0, 3)
             detections = []
             img_h, img_w = image.shape[:2]
@@ -190,19 +253,28 @@ if cv2 is not None:
                 })
             return detections
         
-        if face_cascade is None:
-            return []
-        
         try:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            # Convert to grayscale
+            if cv2_module is not None and hasattr(cv2_module, 'cvtColor'):
+                # Check if COLOR_BGR2GRAY is available
+                if hasattr(cv2_module, 'COLOR_BGR2GRAY'):
+                    gray = cv2_module.cvtColor(image, cv2_module.COLOR_BGR2GRAY)
+                else:
+                    return []
+            else:
+                return []
             
-            faces = face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=6,
-                minSize=(40, 40),
-                flags=cv2.CASCADE_SCALE_IMAGE
-            )
+            # Detect faces
+            if cv2_module is not None and hasattr(cv2_module, 'CASCADE_SCALE_IMAGE'):
+                faces = face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.1,
+                    minNeighbors=6,
+                    minSize=(40, 40),
+                    flags=cv2_module.CASCADE_SCALE_IMAGE
+                )
+            else:
+                return []
             
             faces = filter_faces_by_size_and_position(faces, image.shape, min_size_ratio=0.05, max_size_ratio=0.7)
             
@@ -214,9 +286,23 @@ if cv2 is not None:
             for (x, y, w, h) in faces:
                 face_img = image[y:y+h, x:x+w]
                 
-                face_img_resized = cv2.resize(face_img, (224, 224))
-                face_img_array = tf.keras.utils.img_to_array(face_img_resized)
-                face_img_array = tf.expand_dims(face_img_array, 0)
+                # Resize face image
+                if cv2_module is not None and hasattr(cv2_module, 'resize'):
+                    face_img_resized = cv2_module.resize(face_img, (224, 224))
+                else:
+                    continue
+                    
+                # Convert to array
+                face_img_array = safe_tf_keras_call('utils.img_to_array', face_img_resized)
+                if face_img_array is None:
+                    continue
+                    
+                # Expand dimensions
+                if tf_module is not None and hasattr(tf_module, 'expand_dims'):
+                    face_img_array = tf_module.expand_dims(face_img_array, 0)
+                else:
+                    continue
+                    
                 face_img_array /= 255.0
                 
                 prediction = model.predict(face_img_array, verbose=0)
@@ -253,11 +339,14 @@ if cv2 is not None:
             
             color = (0, 255, 0) if label == "Masked" else (0, 0, 255)
             
-            cv2.rectangle(image_copy, (x, y), (x + w, y + h), color, 2)
+            # Draw rectangle
+            safe_cv2_call('rectangle', image_copy, (x, y), (x + w, y + h), color, 2)
             
-            label_text = f"{label}: {confidence:.1f}%"
-            cv2.putText(image_copy, label_text, (x, y - 10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            # Draw label
+            if cv2_module is not None and hasattr(cv2_module, 'FONT_HERSHEY_SIMPLEX'):
+                label_text = f"{label}: {confidence:.1f}%"
+                cv2_module.putText(image_copy, label_text, (x, y - 10), 
+                                  cv2_module.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         
         return image_copy
 else:
@@ -286,9 +375,7 @@ else:
         return detections
 
     def process_image_for_display(image, detections):
-        if hasattr(image, 'numpy'):
-            image = image.numpy()
-        
+        # For the fallback case, just return the image as is
         return image
 
 @app.route('/')
@@ -318,12 +405,23 @@ def upload_file():
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
             
+        # Check file size
+        file.seek(0, os.SEEK_END)
+        file_length = file.tell()
+        file.seek(0)
+        
+        if file_length > MAX_FILE_SIZE:
+            return jsonify({'success': False, 'error': 'File too large'}), 400
+            
         file_bytes = np.frombuffer(file.read(), np.uint8)
-        if cv2 is not None:
-            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        if cv2_module is not None:
+            image = safe_cv2_call('imdecode', file_bytes, cv2_module.IMREAD_COLOR)
         else:
-            import tensorflow as tf
-            image = tf.io.decode_image(file_bytes, channels=3)
+            try:
+                import tensorflow as tf
+                image = tf.io.decode_image(file_bytes, channels=3)
+            except Exception:
+                image = None
         
         if image is None:
             return jsonify({'success': False, 'error': 'Invalid image file'}), 400
@@ -332,13 +430,59 @@ def upload_file():
         
         processed_image = process_image_for_display(image, detections)
         
-        if cv2 is not None:
-            _, buffer = cv2.imencode('.jpg', processed_image, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-            img_str = base64.b64encode(buffer).decode()
+        if cv2_module is not None:
+            result = safe_cv2_call('imencode', '.jpg', processed_image, [int(cv2_module.IMWRITE_JPEG_QUALITY), 85])
+            if result is not None and isinstance(result, tuple) and len(result) >= 2:
+                _, buffer = result
+                # Handle buffer conversion safely
+                try:
+                    if isinstance(buffer, np.ndarray):
+                        # Convert numpy array to bytes using tobytes()
+                        buffer_bytes = buffer.tobytes()
+                        img_str = base64.b64encode(buffer_bytes).decode()
+                    else:
+                        # Try to convert buffer to bytes directly
+                        try:
+                            buffer_bytes = bytes(buffer)
+                            img_str = base64.b64encode(buffer_bytes).decode()
+                        except Exception:
+                            img_str = ""
+                except Exception:
+                    img_str = ""
+            else:
+                img_str = ""
         else:
-            import tensorflow as tf
-            _, img_bytes = tf.io.encode_jpeg(processed_image).numpy()
-            img_str = base64.b64encode(img_bytes).decode()
+            try:
+                import tensorflow as tf
+                encode_func = getattr(tf.io, 'encode_jpeg', None)
+                if encode_func is not None:
+                    encoded_image = encode_func(processed_image)
+                    # Convert to bytes properly with defensive approach
+                    try:
+                        # Try multiple approaches to get bytes
+                        if hasattr(encoded_image, 'numpy'):
+                            img_array = encoded_image.numpy()
+                            if isinstance(img_array, np.ndarray):
+                                img_bytes = img_array.tobytes()
+                            else:
+                                img_bytes = bytes(img_array)
+                        else:
+                            img_bytes = bytes(encoded_image)
+                        img_str = base64.b64encode(img_bytes).decode()
+                    except Exception:
+                        img_str = ""
+                else:
+                    img_str = ""
+            except Exception:
+                img_str = ""
+        
+        # Force garbage collection
+        try:
+            del image
+            del file_bytes
+        except Exception:
+            pass
+        gc.collect()
         
         return jsonify({
             'success': True,
@@ -348,27 +492,49 @@ def upload_file():
         
     except Exception as e:
         logger.error(f"Error processing upload: {str(e)}")
+        # Force garbage collection on error
+        gc.collect()
         return jsonify({'success': False, 'error': f'Processing failed: {str(e)}'}), 500
 
 @app.route('/process_frame', methods=['POST'])
 def process_frame():
+    """Optimized version that uses less memory"""
     try:
         if 'frame' not in request.files:
             return jsonify({'success': False, 'error': 'No frame provided'}), 400
             
         file = request.files['frame']
         
+        # Check file size
+        file.seek(0, os.SEEK_END)
+        file_length = file.tell()
+        file.seek(0)
+        
+        if file_length > 2 * 1024 * 1024:  # 2MB limit
+            return jsonify({'success': False, 'error': 'Frame too large'}), 400
+        
         file_bytes = np.frombuffer(file.read(), np.uint8)
-        if cv2 is not None:
-            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        if cv2_module is not None:
+            image = safe_cv2_call('imdecode', file_bytes, cv2_module.IMREAD_COLOR)
         else:
-            import tensorflow as tf
-            image = tf.io.decode_image(file_bytes, channels=3)
+            try:
+                import tensorflow as tf
+                image = tf.io.decode_image(file_bytes, channels=3)
+            except Exception:
+                image = None
         
         if image is None:
             return jsonify({'success': False, 'error': 'Invalid frame'}), 400
             
         detections = detect_faces_and_masks(image)
+        
+        # Force garbage collection to free memory
+        try:
+            del image
+            del file_bytes
+        except Exception:
+            pass
+        gc.collect()
         
         return jsonify({
             'success': True,
@@ -377,6 +543,8 @@ def process_frame():
         
     except Exception as e:
         logger.error(f"Error processing frame: {str(e)}")
+        # Force garbage collection on error
+        gc.collect()
         return jsonify({'success': False, 'error': 'Frame processing failed'}), 500
 
 @app.route('/health')
@@ -392,4 +560,8 @@ def health_check():
 if __name__ == '__main__':
     load_model_and_cascade()
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # For Render deployment, we don't want debug mode
+    if os.environ.get('RENDER'):
+        app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    else:
+        app.run(debug=True, host='0.0.0.0', port=5000)

@@ -7,6 +7,10 @@ let canvas = null;
 let context = null;
 let detectionInterval = null;
 
+// TensorFlow.js variables
+let model = null;
+let isModelLoading = false;
+
 const elements = {
     modeTabs: document.querySelectorAll('.mode-tab'),
     modeContents: document.querySelectorAll('.mode-content'),
@@ -281,7 +285,8 @@ async function startCamera() {
             isStreaming = true;
             updateCameraStatus('Live streaming...', 'active');
             
-            startRealTimeDetection();
+            // Load TensorFlow.js model
+            loadTFModel();
         };
         
         videoElement.onerror = (error) => {
@@ -319,6 +324,26 @@ async function startCamera() {
         showNotification(`${errorMessage}. ${helpText}`, 'error');
         
         stopCamera();
+    }
+}
+
+// Load TensorFlow.js model
+async function loadTFModel() {
+    if (isModelLoading) return;
+    
+    isModelLoading = true;
+    updateCameraStatus('Loading AI model...', 'loading');
+    
+    try {
+        // Load the COCO-SSD model for object detection
+        model = await cocoSsd.load();
+        updateCameraStatus('Model loaded. Starting detection...', 'active');
+        startRealTimeDetection();
+    } catch (error) {
+        console.error('Model loading error:', error);
+        updateCameraStatus('Model loading failed', 'error');
+        showNotification('Failed to load detection model. Please try again.', 'error');
+        isModelLoading = false;
     }
 }
 
@@ -365,56 +390,42 @@ function startRealTimeDetection() {
         clearInterval(detectionInterval);
     }
     
+    // For client-side detection, we'll process frames more frequently
     detectionInterval = setInterval(async () => {
         if (isStreaming && videoElement && videoElement.readyState === 4) {
-            await processVideoFrame();
+            await processVideoFrameClientSide();
         }
-    }, 1500);
+    }, 500); // Process every 500ms for better performance
 }
 
-async function processVideoFrame() {
+// Client-side frame processing using TensorFlow.js
+async function processVideoFrameClientSide() {
+    if (!model) return;
+    
     try {
-        const tempCanvas = document.createElement('canvas');
-        const tempContext = tempCanvas.getContext('2d');
+        // Detect objects in the video frame
+        const predictions = await model.detect(videoElement);
         
-        tempCanvas.width = canvas.width;
-        tempCanvas.height = canvas.height;
+        // Filter for person detections (COCO-SSD detects various objects)
+        const personDetections = predictions.filter(pred => 
+            pred.class === 'person' && pred.score > 0.5
+        );
         
-        tempContext.imageSmoothingEnabled = true;
-        tempContext.imageSmoothingQuality = 'high';
-        tempContext.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-        
-        tempCanvas.toBlob(async (blob) => {
-            if (blob) {
-                const formData = new FormData();
-                formData.append('frame', blob, 'frame.jpg');
-                
-                try {
-                    const response = await fetch('/process_frame', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.success && result.detections) {
-                        drawDetectionBoxes(result.detections);
-                    }
-                } catch (error) {
-                    console.error('Frame processing error:', error);
-                }
-            }
-        }, 'image/jpeg', 0.95);
+        // For simplicity, we'll just draw bounding boxes
+        // In a full implementation, you would integrate with a face mask detection model
+        drawClientDetectionBoxes(personDetections);
         
     } catch (error) {
-        console.error('Video frame processing error:', error);
+        console.error('Client-side frame processing error:', error);
     }
 }
 
-function drawDetectionBoxes(detections) {
+// Draw detection boxes for client-side processing
+function drawClientDetectionBoxes(detections) {
     const videoRect = videoElement.getBoundingClientRect();
     const cameraRect = elements.cameraView.getBoundingClientRect();
     
+    // Remove existing boxes
     const existingBoxes = elements.cameraView.querySelectorAll('.detection-box');
     existingBoxes.forEach(box => box.remove());
     
@@ -422,22 +433,31 @@ function drawDetectionBoxes(detections) {
         const box = document.createElement('div');
         box.className = 'detection-box';
         
-        const scaleX = videoRect.width / canvas.width;
-        const scaleY = videoRect.height / canvas.height;
+        // COCO-SSD returns [x, y, width, height] in image coordinates
+        const x = detection.bbox[0];
+        const y = detection.bbox[1];
+        const width = detection.bbox[2];
+        const height = detection.bbox[3];
         
-        const x = detection.bbox[0] * scaleX;
-        const y = detection.bbox[1] * scaleY;
-        const width = detection.bbox[2] * scaleX;
-        const height = detection.bbox[3] * scaleY;
+        // Scale to video element dimensions
+        const scaleX = videoRect.width / videoElement.videoWidth;
+        const scaleY = videoRect.height / videoElement.videoHeight;
         
-        const borderColor = detection.label === 'Masked' ? '#00ff00' : '#ff0000';
+        const scaledX = x * scaleX;
+        const scaledY = y * scaleY;
+        const scaledWidth = width * scaleX;
+        const scaledHeight = height * scaleY;
+        
+        // For now, we'll use blue to indicate person detection
+        // In a full implementation, you would use different colors for masked/unmasked
+        const borderColor = '#0066ff';
         
         box.style.cssText = `
             position: absolute;
-            left: ${x}px;
-            top: ${y}px;
-            width: ${width}px;
-            height: ${height}px;
+            left: ${scaledX}px;
+            top: ${scaledY}px;
+            width: ${scaledWidth}px;
+            height: ${scaledHeight}px;
             border: 3px solid ${borderColor};
             border-radius: 4px;
             pointer-events: none;
@@ -446,7 +466,7 @@ function drawDetectionBoxes(detections) {
         
         const label = document.createElement('div');
         label.className = 'detection-label-box';
-        label.textContent = `${detection.label}: ${detection.confidence.toFixed(1)}%`;
+        label.textContent = `${detection.class}: ${(detection.score * 100).toFixed(1)}%`;
         label.style.cssText = `
             position: absolute;
             top: -30px;
