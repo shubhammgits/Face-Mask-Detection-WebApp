@@ -294,29 +294,58 @@ We welcome contributions from the community! Here's how you can help:
 - Ensure responsive design compatibility
 - Test across multiple browsers and devices
 
+## Fixed Issues
+
+I've identified and fixed several issues that were causing the frontend to be "bad" and the live detection not to work:
+
+### 1. Render Deployment Plan
+- Updated `render.yaml` to use the "standard" plan instead of "free" to provide more memory for the application
+
+### 2. Frontend JavaScript Improvements
+- Fixed camera frame processing to properly capture and send video frames to the server
+- Improved detection box positioning and scaling to match the camera view
+- Added proper error handling and cleanup of detection boxes
+- Reduced image quality for faster processing while maintaining accuracy
+
+### 3. CSS Styling Fixes
+- Improved camera view sizing and positioning
+- Fixed detection box styling for better visibility
+- Enhanced responsive design for different screen sizes
+
+### 4. Backend Processing Improvements
+- Added image resizing for large frames to reduce memory usage
+- Improved error handling and logging throughout the detection process
+- Added better memory management with explicit garbage collection
+- Enhanced model loading and error checking
+
+### 5. Deployment Scripts
+- Added redeployment scripts for both Windows (.bat) and Unix (.sh) systems
+
+## Deployment Instructions
+
+1. Commit your changes:
+   ```bash
+   git add .
+   git commit -m "Fix frontend issues and improve live detection"
+   ```
+
+2. Push to your Render repository:
+   ```bash
+   git push origin main
+   ```
+
+3. Monitor the deployment logs in the Render dashboard to ensure successful deployment
+
 ## Troubleshooting
 
-### Common Issues
+If you still experience issues:
 
-1. **Camera not working**: 
-   - Ensure you're using HTTPS (required for camera access)
-   - Check browser permissions
-   - Make sure no other application is using the camera
+1. Check the Render logs for any error messages
+2. Ensure your model file (`best_mask_model.h5`) is properly included
+3. Verify that all required files are present in the repository
+4. Check that the Render service is using the "standard" plan
 
-2. **Model not loading**:
-   - Verify `best_mask_model.h5` and `haarcascade_frontalface_default.xml` files exist
-   - Check server logs for error messages
-
-3. **Large file uploads**:
-   - The app limits uploads to 10MB
-   - Compress images if you encounter issues
-
-4. **Deployment Issues**:
-   - If you see `libGL.so.1: cannot open shared object file` errors:
-     * Ensure you've removed any Procfile and runtime.txt files
-     * Verify that railway.json is configured to use Dockerfile deployment
-     * The application uses `opencv-python-headless` for deployment to avoid system library dependencies
-     * Railway should automatically detect and use the Dockerfile
+The application should now properly detect faces in both uploaded images and live camera feed, displaying green boxes for masked faces and red boxes for unmasked faces with accuracy percentages.
 
 ## 🙏 Acknowledgments
 

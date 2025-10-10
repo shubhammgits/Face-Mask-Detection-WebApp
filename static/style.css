@@ -386,33 +386,61 @@ body::before {
 }
 
 .camera-view {
+    position: relative;
+    width: 100%;
+    height: 400px;
     background: var(--bg-tertiary);
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 1rem;
-    box-shadow: var(--shadow-primary);
-    position: relative;
-    transition: var(--transition-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.camera-view video {
-    width: 100%;
-    height: 180px;
-    max-height: 180px;
-    object-fit: cover;
-    display: block;
-    transition: var(--transition-normal);
-}
-
-.camera-view.streaming video {
+.camera-view.streaming {
     height: 400px;
-    max-height: 400px;
+}
+
+#video-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.camera-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background: var(--glass-bg);
+    border-radius: 12px;
+}
+
+.placeholder-content {
+    text-align: center;
+    padding: 2rem;
+}
+
+.placeholder-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.placeholder-text {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .detection-box {
     position: absolute;
     pointer-events: none;
-    z-index: 5;
+    z-index: 1000;
     box-sizing: border-box;
 }
 
@@ -421,6 +449,7 @@ body::before {
     font-weight: 600;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
     letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 .camera-help {
@@ -441,52 +470,6 @@ body::before {
 
 .help-text strong {
     color: var(--accent-primary);
-}
-
-.camera-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--glass-bg);
-    height: 180px;
-    max-height: 180px;
-    transition: var(--transition-normal);
-}
-
-.placeholder-content {
-    text-align: center;
-}
-
-.placeholder-title {
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    color: var(--text-primary);
-    text-align: center;
-}
-
-.placeholder-text {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-
-#video-stream {
-    width: 100%;
-    height: 180px;
-    max-height: 180px;
-    object-fit: cover;
-    display: block;
-    transition: var(--transition-normal);
-}
-
-.camera-view.streaming #video-stream {
-    height: 400px;
-    max-height: 400px;
-}
-
-.camera-view.streaming .camera-placeholder {
-    height: 400px;
-    max-height: 400px;
 }
 
 .camera-controls {

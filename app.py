@@ -232,6 +232,8 @@ if cv2_module is not None and tf_module is not None:
         
         print(f"=== DETECTING FACES AND MASKS ===")
         print(f"Model loaded: {model_loaded}, Cascade loaded: {cascade_loaded}")
+        print(f"Image shape: {image.shape if hasattr(image, 'shape') else 'Unknown'}")
+        
         if not tensorflow_available or model is None or face_cascade is None:
             print("Model or cascade not loaded, returning empty detections")
             print("=== DETECTION COMPLETE (EMPTY) ===")
@@ -260,8 +262,8 @@ if cv2_module is not None and tf_module is not None:
                 faces = face_cascade.detectMultiScale(
                     gray,
                     scaleFactor=1.1,
-                    minNeighbors=6,
-                    minSize=(40, 40),
+                    minNeighbors=5,
+                    minSize=(30, 30),
                     flags=cascade_scale_image
                 )
                 print(f"Found {len(faces)} faces")
@@ -270,26 +272,43 @@ if cv2_module is not None and tf_module is not None:
                 print("=== DETECTION COMPLETE (EMPTY) ===")
                 return []
             
-            faces = filter_faces_by_size_and_position(faces, image.shape, min_size_ratio=0.05, max_size_ratio=0.7)
+            # Filter faces by size and position
+            faces = filter_faces_by_size_and_position(faces, image.shape, min_size_ratio=0.03, max_size_ratio=0.8)
             print(f"Filtered to {len(faces)} faces")
             
+            # Apply non-max suppression if we have multiple faces
             if len(faces) > 1:
-                faces = non_max_suppression(faces, overlap_threshold=0.2)
+                faces = non_max_suppression(faces, overlap_threshold=0.3)
                 print(f"After NMS: {len(faces)} faces")
             
             detections = []
             
             for (x, y, w, h) in faces:
                 print(f"Processing face at ({x}, {y}) with size ({w}, {h})")
-                face_img = image[y:y+h, x:x+w]
                 
+                # Extract face region
+                try:
+                    face_img = image[y:y+h, x:x+w]
+                    if face_img.size == 0:
+                        print("Empty face region, skipping")
+                        continue
+                except Exception as e:
+                    print(f"Error extracting face region: {e}")
+                    continue
+                
+                # Resize face for model input
                 if cv2_module is not None and hasattr(cv2_module, 'resize'):
-                    face_img_resized = cv2_module.resize(face_img, (224, 224))
-                    print("Face resized successfully")
+                    try:
+                        face_img_resized = cv2_module.resize(face_img, (224, 224))
+                        print("Face resized successfully")
+                    except Exception as e:
+                        print(f"Error resizing face: {e}")
+                        continue
                 else:
                     print("OpenCV resize not available")
                     continue
                     
+                # Convert to array for model
                 if tf_module is not None:
                     # Try accessing keras safely
                     keras_attr = getattr(tf_module, 'keras', None)
@@ -298,8 +317,12 @@ if cv2_module is not None and tf_module is not None:
                         if utils_attr is not None:
                             img_to_array_func = getattr(utils_attr, 'img_to_array', None)
                             if img_to_array_func is not None:
-                                face_img_array = img_to_array_func(face_img_resized)
-                                print("Image converted to array successfully")
+                                try:
+                                    face_img_array = img_to_array_func(face_img_resized)
+                                    print("Image converted to array successfully")
+                                except Exception as e:
+                                    print(f"Error converting image to array: {e}")
+                                    continue
                             else:
                                 print("TensorFlow keras utils img_to_array not available")
                                 continue
@@ -313,9 +336,14 @@ if cv2_module is not None and tf_module is not None:
                     print("TensorFlow not available")
                     continue
                     
+                # Expand dimensions and normalize
                 if tf_module is not None and hasattr(tf_module, 'expand_dims'):
-                    face_img_array = tf_module.expand_dims(face_img_array, 0)
-                    print("Dimensions expanded successfully")
+                    try:
+                        face_img_array = tf_module.expand_dims(face_img_array, 0)
+                        print("Dimensions expanded successfully")
+                    except Exception as e:
+                        print(f"Error expanding dimensions: {e}")
+                        continue
                 else:
                     print("TensorFlow expand_dims not available")
                     continue
@@ -323,27 +351,36 @@ if cv2_module is not None and tf_module is not None:
                 face_img_array /= 255.0
                 print("Image normalized successfully")
                 
-                print("Predicting mask...")
-                prediction = model.predict(face_img_array, verbose=0)
-                print(f"Prediction result: {prediction}")
-                
-                mask_probability = float(1 - prediction[0][0])
-                no_mask_probability = float(prediction[0][0])
-                
-                if mask_probability > 0.5:
-                    label = "Masked"
-                    confidence = mask_probability * 100
-                else:
-                    label = "No Mask"
-                    confidence = no_mask_probability * 100
-                
-                print(f"Face {len(detections)+1}: {label} ({confidence:.1f}%)")
-                
-                detections.append({
-                    'bbox': [int(x), int(y), int(w), int(h)],
-                    'label': label,
-                    'confidence': confidence
-                })
+                # Make prediction
+                try:
+                    print("Predicting mask...")
+                    prediction = model.predict(face_img_array, verbose=0)
+                    print(f"Prediction result: {prediction}")
+                    
+                    if prediction.size == 0:
+                        print("Empty prediction result, skipping")
+                        continue
+                        
+                    mask_probability = float(1 - prediction[0][0])
+                    no_mask_probability = float(prediction[0][0])
+                    
+                    if mask_probability > 0.5:
+                        label = "Masked"
+                        confidence = mask_probability * 100
+                    else:
+                        label = "No Mask"
+                        confidence = no_mask_probability * 100
+                    
+                    print(f"Face {len(detections)+1}: {label} ({confidence:.1f}%)")
+                    
+                    detections.append({
+                        'bbox': [int(x), int(y), int(w), int(h)],
+                        'label': label,
+                        'confidence': confidence
+                    })
+                except Exception as e:
+                    print(f"Error during prediction: {e}")
+                    continue
                 
             print(f"Total detections: {len(detections)}")
             print("=== DETECTION COMPLETE ===")
@@ -351,7 +388,7 @@ if cv2_module is not None and tf_module is not None:
             
         except Exception as e:
             print(f"Error in face detection: {str(e)}")
-            logger.error(f"Error in face detection: {str(e)}")
+            logger.error(f"Error in face detection: {str(e)}", exc_info=True)
             print("=== DETECTION COMPLETE (ERROR) ===")
             return []
 
@@ -521,11 +558,18 @@ def process_frame():
             print("Frame too large")
             return jsonify({'success': False, 'error': 'Frame too large'}), 400
         
-        file_bytes = np.frombuffer(file.read(), np.uint8)
+        # Read file bytes
+        file_bytes = file.read()
+        if len(file_bytes) == 0:
+            print("Empty frame data")
+            return jsonify({'success': False, 'error': 'Empty frame data'}), 400
+        
+        # Decode image
+        nparr = np.frombuffer(file_bytes, np.uint8)
         imdecode_func = getattr(cv2_module, 'imdecode', None) if cv2_module is not None else None
         imread_color = getattr(cv2_module, 'IMREAD_COLOR', None) if cv2_module is not None else None
         if imdecode_func is not None and imread_color is not None:
-            image = imdecode_func(file_bytes, imread_color)
+            image = imdecode_func(nparr, imread_color)
         else:
             # Fallback to TensorFlow if available
             io_attr = getattr(tf_module, 'io', None) if tf_module is not None else None
@@ -533,15 +577,32 @@ def process_frame():
                 decode_image_func = getattr(io_attr, 'decode_image', None)
                 if decode_image_func is not None:
                     image = decode_image_func(file_bytes, channels=3)
+                    # Convert to numpy array if needed
+                    if hasattr(image, 'numpy'):
+                        image = image.numpy()
                 else:
                     image = None
             else:
                 image = None
         
-        if image is None:
-            print("Invalid frame")
+        if image is None or image.size == 0:
+            print("Invalid frame or empty image")
             return jsonify({'success': False, 'error': 'Invalid frame'}), 400
             
+        print(f"Frame decoded successfully. Shape: {image.shape}")
+        
+        # Resize image for faster processing if it's too large
+        max_dimension = 640
+        height, width = image.shape[:2]
+        if max(height, width) > max_dimension:
+            scale = max_dimension / max(height, width)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            resize_func = getattr(cv2_module, 'resize', None) if cv2_module is not None else None
+            if resize_func is not None:
+                image = resize_func(image, (new_width, new_height))
+                print(f"Resized image to {new_width}x{new_height}")
+        
         print("Detecting faces and masks in frame...")
         detections = detect_faces_and_masks(image)
         print(f"Found {len(detections)} faces in frame")
@@ -549,6 +610,7 @@ def process_frame():
         # Force garbage collection to free memory
         try:
             del image
+            del nparr
             del file_bytes
         except:
             pass
@@ -562,10 +624,10 @@ def process_frame():
         
     except Exception as e:
         print(f"Error processing frame: {str(e)}")
-        logger.error(f"Error processing frame: {str(e)}")
+        logger.error(f"Error processing frame: {str(e)}", exc_info=True)
         # Force garbage collection on error
         gc.collect()
-        return jsonify({'success': False, 'error': 'Frame processing failed'}), 500
+        return jsonify({'success': False, 'error': f'Frame processing failed: {str(e)}'}), 500
 
 @app.route('/health')
 def health_check():

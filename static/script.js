@@ -369,22 +369,25 @@ function startRealTimeDetection() {
         if (isStreaming && videoElement && videoElement.readyState === 4) {
             await processVideoFrame();
         }
-    }, 1500);
+    }, 1000); // Changed from 1500 to 1000 for better responsiveness
 }
 
 async function processVideoFrame() {
     try {
         console.log("Processing video frame...");
+        
+        // Create a temporary canvas to capture the video frame
         const tempCanvas = document.createElement('canvas');
         const tempContext = tempCanvas.getContext('2d');
         
-        tempCanvas.width = canvas.width;
-        tempCanvas.height = canvas.height;
+        // Set canvas dimensions to match video
+        tempCanvas.width = videoElement.videoWidth || 640;
+        tempCanvas.height = videoElement.videoHeight || 480;
         
-        tempContext.imageSmoothingEnabled = true;
-        tempContext.imageSmoothingQuality = 'high';
-        tempContext.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        // Draw the current video frame to the canvas
+        tempContext.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
         
+        // Convert canvas to blob and send to server
         tempCanvas.toBlob(async (blob) => {
             if (blob) {
                 console.log("Sending frame to server...");
@@ -401,43 +404,57 @@ async function processVideoFrame() {
                     console.log("Received response from server:", result);
                     
                     if (result.success && result.detections) {
-                        drawDetectionBoxes(result.detections);
+                        drawDetectionBoxes(result.detections, tempCanvas.width, tempCanvas.height);
                     } else {
                         console.log("No detections or error in response");
+                        // Clear any existing boxes
+                        clearDetectionBoxes();
                     }
                 } catch (error) {
                     console.error('Frame processing error:', error);
+                    clearDetectionBoxes();
                 }
             } else {
                 console.log("Failed to create blob from canvas");
             }
-        }, 'image/jpeg', 0.95);
+        }, 'image/jpeg', 0.8); // Reduced quality for faster processing
         
     } catch (error) {
         console.error('Video frame processing error:', error);
+        clearDetectionBoxes();
     }
 }
 
-function drawDetectionBoxes(detections) {
-    console.log("Drawing detection boxes:", detections);
-    const videoRect = videoElement.getBoundingClientRect();
-    const cameraRect = elements.cameraView.getBoundingClientRect();
-    
+function clearDetectionBoxes() {
     const existingBoxes = elements.cameraView.querySelectorAll('.detection-box');
     existingBoxes.forEach(box => box.remove());
+}
+
+function drawDetectionBoxes(detections, frameWidth, frameHeight) {
+    console.log("Drawing detection boxes:", detections);
+    
+    // Clear existing boxes
+    clearDetectionBoxes();
+    
+    // Get the camera view dimensions
+    const cameraView = elements.cameraView;
+    const cameraRect = cameraView.getBoundingClientRect();
+    
+    // Calculate scaling factors
+    const scaleX = cameraRect.width / frameWidth;
+    const scaleY = cameraRect.height / frameHeight;
     
     detections.forEach((detection) => {
         const box = document.createElement('div');
         box.className = 'detection-box';
         
-        const scaleX = videoRect.width / canvas.width;
-        const scaleY = videoRect.height / canvas.height;
-        
+        // Scale the bounding box coordinates
         const x = detection.bbox[0] * scaleX;
         const y = detection.bbox[1] * scaleY;
         const width = detection.bbox[2] * scaleX;
         const height = detection.bbox[3] * scaleY;
         
+        // Set box styles
         const borderColor = detection.label === 'Masked' ? '#00ff00' : '#ff0000';
         
         box.style.cssText = `
@@ -449,27 +466,29 @@ function drawDetectionBoxes(detections) {
             border: 3px solid ${borderColor};
             border-radius: 4px;
             pointer-events: none;
-            z-index: 5;
+            z-index: 1000;
         `;
         
+        // Create label
         const label = document.createElement('div');
         label.className = 'detection-label-box';
         label.textContent = `${detection.label}: ${detection.confidence.toFixed(1)}%`;
         label.style.cssText = `
             position: absolute;
-            top: -30px;
+            top: -25px;
             left: 0;
             background: ${borderColor};
             color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 11px;
             font-weight: bold;
             white-space: nowrap;
+            font-family: 'Inter', sans-serif;
         `;
         
         box.appendChild(label);
-        elements.cameraView.appendChild(box);
+        cameraView.appendChild(box);
     });
 }
 
