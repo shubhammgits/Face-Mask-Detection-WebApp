@@ -6,13 +6,14 @@ from werkzeug.utils import secure_filename
 import base64
 from io import BytesIO
 import logging
-import random
 import gc
 
-# Global variables for modules
+# Configure TensorFlow to use less memory
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Reduce TensorFlow logging
+
+tensorflow_available = False
 tf_module = None
 cv2_module = None
-tensorflow_available = False
 
 try:
     import tensorflow as tf
@@ -83,20 +84,11 @@ def load_model_and_cascade():
             try:
                 # Load model with memory optimization
                 if tf_module is not None:
-                    try:
-                        # Try accessing keras models with a defensive approach
-                        keras_attr = getattr(tf_module, 'keras', None)
-                        if keras_attr is not None:
-                            models_attr = getattr(keras_attr, 'models', None)
-                            if models_attr is not None:
-                                load_model_func = getattr(models_attr, 'load_model', None)
-                                if load_model_func is not None:
-                                    model = load_model_func(model_path)
-                                    model_loaded = True
-                                    logger.info("Face mask detection model loaded successfully")
-                    except Exception as e:
-                        logger.error(f"Error loading model: {str(e)}")
-                        model_loaded = False
+                    # Configure TensorFlow to use less memory
+                    tf_module.config.experimental.set_memory_limit(1024)  # Limit to 1GB
+                    model = tf_module.keras.models.load_model(model_path)
+                    model_loaded = True
+                    logger.info("Face mask detection model loaded successfully")
                 else:
                     model_loaded = False
             except Exception as e:
@@ -126,34 +118,6 @@ def load_model_and_cascade():
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# Helper functions to safely access module attributes
-def safe_cv2_call(func_name, *args, **kwargs):
-    """Safely call OpenCV functions"""
-    if cv2_module is not None and hasattr(cv2_module, func_name):
-        return getattr(cv2_module, func_name)(*args, **kwargs)
-    return None
-
-def safe_tf_call(func_name, *args, **kwargs):
-    """Safely call TensorFlow functions"""
-    if tf_module is not None and hasattr(tf_module, func_name):
-        return getattr(tf_module, func_name)(*args, **kwargs)
-    return None
-
-def safe_tf_keras_call(func_name, *args, **kwargs):
-    """Safely call TensorFlow Keras functions"""
-    if tf_module is not None:
-        try:
-            # Access keras through getattr to avoid linter issues
-            keras_attr = getattr(tf_module, 'keras', None)
-            if keras_attr is not None:
-                keras_module = keras_attr
-                func_attr = getattr(keras_module, func_name, None)
-                if func_attr is not None:
-                    return func_attr(*args, **kwargs)
-        except Exception:
-            pass
-    return None
 
 if cv2_module is not None and tf_module is not None:
     def calculate_iou(box1, box2):
@@ -233,48 +197,18 @@ if cv2_module is not None and tf_module is not None:
         global model, face_cascade
         
         if not tensorflow_available or model is None or face_cascade is None:
-            num_faces = random.randint(0, 3)
-            detections = []
-            img_h, img_w = image.shape[:2]
-            
-            for i in range(num_faces):
-                w = random.randint(50, min(200, img_w // 3))
-                h = random.randint(50, min(200, img_h // 3))
-                x = random.randint(0, img_w - w)
-                y = random.randint(0, img_h - h)
-                
-                label = "Masked" if random.random() > 0.3 else "No Mask"
-                confidence = random.uniform(70, 99)
-                
-                detections.append({
-                    'bbox': [int(x), int(y), int(w), int(h)],
-                    'label': label,
-                    'confidence': confidence
-                })
-            return detections
+            return []
         
         try:
-            # Convert to grayscale
-            if cv2_module is not None and hasattr(cv2_module, 'cvtColor'):
-                # Check if COLOR_BGR2GRAY is available
-                if hasattr(cv2_module, 'COLOR_BGR2GRAY'):
-                    gray = cv2_module.cvtColor(image, cv2_module.COLOR_BGR2GRAY)
-                else:
-                    return []
-            else:
-                return []
+            gray = cv2_module.cvtColor(image, cv2_module.COLOR_BGR2GRAY)
             
-            # Detect faces
-            if cv2_module is not None and hasattr(cv2_module, 'CASCADE_SCALE_IMAGE'):
-                faces = face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.1,
-                    minNeighbors=6,
-                    minSize=(40, 40),
-                    flags=cv2_module.CASCADE_SCALE_IMAGE
-                )
-            else:
-                return []
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=6,
+                minSize=(40, 40),
+                flags=cv2_module.CASCADE_SCALE_IMAGE
+            )
             
             faces = filter_faces_by_size_and_position(faces, image.shape, min_size_ratio=0.05, max_size_ratio=0.7)
             
@@ -286,23 +220,9 @@ if cv2_module is not None and tf_module is not None:
             for (x, y, w, h) in faces:
                 face_img = image[y:y+h, x:x+w]
                 
-                # Resize face image
-                if cv2_module is not None and hasattr(cv2_module, 'resize'):
-                    face_img_resized = cv2_module.resize(face_img, (224, 224))
-                else:
-                    continue
-                    
-                # Convert to array
-                face_img_array = safe_tf_keras_call('utils.img_to_array', face_img_resized)
-                if face_img_array is None:
-                    continue
-                    
-                # Expand dimensions
-                if tf_module is not None and hasattr(tf_module, 'expand_dims'):
-                    face_img_array = tf_module.expand_dims(face_img_array, 0)
-                else:
-                    continue
-                    
+                face_img_resized = cv2_module.resize(face_img, (224, 224))
+                face_img_array = tf_module.keras.utils.img_to_array(face_img_resized)
+                face_img_array = tf_module.expand_dims(face_img_array, 0)
                 face_img_array /= 255.0
                 
                 prediction = model.predict(face_img_array, verbose=0)
@@ -339,43 +259,18 @@ if cv2_module is not None and tf_module is not None:
             
             color = (0, 255, 0) if label == "Masked" else (0, 0, 255)
             
-            # Draw rectangle
-            safe_cv2_call('rectangle', image_copy, (x, y), (x + w, y + h), color, 2)
+            cv2_module.rectangle(image_copy, (x, y), (x + w, y + h), color, 2)
             
-            # Draw label
-            if cv2_module is not None and hasattr(cv2_module, 'FONT_HERSHEY_SIMPLEX'):
-                label_text = f"{label}: {confidence:.1f}%"
-                cv2_module.putText(image_copy, label_text, (x, y - 10), 
-                                  cv2_module.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            label_text = f"{label}: {confidence:.1f}%"
+            cv2_module.putText(image_copy, label_text, (x, y - 10), 
+                           cv2_module.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         
         return image_copy
 else:
     def detect_faces_and_masks(image):
-        num_faces = random.randint(0, 3)
-        detections = []
-        if hasattr(image, 'shape'):
-            img_h, img_w = image.shape[:2]
-        else:
-            img_h, img_w = 480, 640
-            
-        for i in range(num_faces):
-            w = random.randint(50, min(200, img_w // 3))
-            h = random.randint(50, min(200, img_h // 3))
-            x = random.randint(0, img_w - w)
-            y = random.randint(0, img_h - h)
-            
-            label = "Masked" if random.random() > 0.3 else "No Mask"
-            confidence = random.uniform(70, 99)
-            
-            detections.append({
-                'bbox': [int(x), int(y), int(w), int(h)],
-                'label': label,
-                'confidence': confidence
-            })
-        return detections
+        return []
 
     def process_image_for_display(image, detections):
-        # For the fallback case, just return the image as is
         return image
 
 @app.route('/')
@@ -415,13 +310,9 @@ def upload_file():
             
         file_bytes = np.frombuffer(file.read(), np.uint8)
         if cv2_module is not None:
-            image = safe_cv2_call('imdecode', file_bytes, cv2_module.IMREAD_COLOR)
+            image = cv2_module.imdecode(file_bytes, cv2_module.IMREAD_COLOR)
         else:
-            try:
-                import tensorflow as tf
-                image = tf.io.decode_image(file_bytes, channels=3)
-            except Exception:
-                image = None
+            image = tf_module.io.decode_image(file_bytes, channels=3)
         
         if image is None:
             return jsonify({'success': False, 'error': 'Invalid image file'}), 400
@@ -431,56 +322,17 @@ def upload_file():
         processed_image = process_image_for_display(image, detections)
         
         if cv2_module is not None:
-            result = safe_cv2_call('imencode', '.jpg', processed_image, [int(cv2_module.IMWRITE_JPEG_QUALITY), 85])
-            if result is not None and isinstance(result, tuple) and len(result) >= 2:
-                _, buffer = result
-                # Handle buffer conversion safely
-                try:
-                    if isinstance(buffer, np.ndarray):
-                        # Convert numpy array to bytes using tobytes()
-                        buffer_bytes = buffer.tobytes()
-                        img_str = base64.b64encode(buffer_bytes).decode()
-                    else:
-                        # Try to convert buffer to bytes directly
-                        try:
-                            buffer_bytes = bytes(buffer)
-                            img_str = base64.b64encode(buffer_bytes).decode()
-                        except Exception:
-                            img_str = ""
-                except Exception:
-                    img_str = ""
-            else:
-                img_str = ""
+            _, buffer = cv2_module.imencode('.jpg', processed_image, [int(cv2_module.IMWRITE_JPEG_QUALITY), 85])
+            img_str = base64.b64encode(buffer).decode()
         else:
-            try:
-                import tensorflow as tf
-                encode_func = getattr(tf.io, 'encode_jpeg', None)
-                if encode_func is not None:
-                    encoded_image = encode_func(processed_image)
-                    # Convert to bytes properly with defensive approach
-                    try:
-                        # Try multiple approaches to get bytes
-                        if hasattr(encoded_image, 'numpy'):
-                            img_array = encoded_image.numpy()
-                            if isinstance(img_array, np.ndarray):
-                                img_bytes = img_array.tobytes()
-                            else:
-                                img_bytes = bytes(img_array)
-                        else:
-                            img_bytes = bytes(encoded_image)
-                        img_str = base64.b64encode(img_bytes).decode()
-                    except Exception:
-                        img_str = ""
-                else:
-                    img_str = ""
-            except Exception:
-                img_str = ""
+            _, img_bytes = tf_module.io.encode_jpeg(processed_image).numpy()
+            img_str = base64.b64encode(img_bytes).decode()
         
         # Force garbage collection
         try:
             del image
             del file_bytes
-        except Exception:
+        except:
             pass
         gc.collect()
         
@@ -515,13 +367,9 @@ def process_frame():
         
         file_bytes = np.frombuffer(file.read(), np.uint8)
         if cv2_module is not None:
-            image = safe_cv2_call('imdecode', file_bytes, cv2_module.IMREAD_COLOR)
+            image = cv2_module.imdecode(file_bytes, cv2_module.IMREAD_COLOR)
         else:
-            try:
-                import tensorflow as tf
-                image = tf.io.decode_image(file_bytes, channels=3)
-            except Exception:
-                image = None
+            image = tf_module.io.decode_image(file_bytes, channels=3)
         
         if image is None:
             return jsonify({'success': False, 'error': 'Invalid frame'}), 400
@@ -532,7 +380,7 @@ def process_frame():
         try:
             del image
             del file_bytes
-        except Exception:
+        except:
             pass
         gc.collect()
         
