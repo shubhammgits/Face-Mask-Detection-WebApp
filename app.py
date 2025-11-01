@@ -5,6 +5,7 @@ from flask_cors import CORS
 import base64
 import logging
 import gc
+import time
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -28,6 +29,14 @@ try:
                     print(e)
     except Exception as e:
         print(f"Warning: Could not configure TensorFlow memory: {e}")
+        
+    # Additional TensorFlow memory optimizations
+    if hasattr(tf, 'config'):
+        try:
+            tf.config.threading.set_inter_op_parallelism_threads(1)
+            tf.config.threading.set_intra_op_parallelism_threads(1)
+        except Exception as e:
+            print(f"Warning: Could not set TensorFlow threading: {e}")
 except ImportError as e:
     tf_module = None
     print(f"Warning: TensorFlow not available: {e}")
@@ -64,6 +73,10 @@ model = None
 face_cascade = None
 model_loaded = False
 cascade_loaded = False
+
+# Add frame processing rate limiting
+last_frame_time = 0
+frame_interval = 0.5  # Minimum 0.5 seconds between frames
 
 def load_model_and_cascade():
     global model, face_cascade, model_loaded, cascade_loaded
@@ -516,7 +529,18 @@ def upload_file():
 
 @app.route('/process_frame', methods=['POST'])
 def process_frame():
+    global last_frame_time, frame_interval
+    
     print("=== PROCESS FRAME ENDPOINT CALLED ===")
+    
+    # Rate limiting to prevent memory issues
+    current_time = time.time()
+    if current_time - last_frame_time < frame_interval:
+        print("Frame processing rate limited")
+        return jsonify({'success': True, 'detections': [], 'rate_limited': True})
+    
+    last_frame_time = current_time
+    
     try:
         if 'frame' not in request.files:
             print("No frame provided in request")
@@ -561,7 +585,8 @@ def process_frame():
             
         print(f"Frame decoded successfully. Shape: {image.shape}")
         
-        max_dimension = 640
+        # Reduce image size for processing to save memory
+        max_dimension = 480
         height, width = image.shape[:2]
         if max(height, width) > max_dimension:
             scale = max_dimension / max(height, width)

@@ -6,6 +6,8 @@ let videoElement = null;
 let canvas = null;
 let context = null;
 let detectionInterval = null;
+let lastDetectionTime = 0;
+let detectionCooldown = 500; // Minimum ms between detections
 
 const elements = {
     modeTabs: document.querySelectorAll('.mode-tab'),
@@ -236,8 +238,8 @@ async function startCamera() {
         
         const constraints = {
             video: {
-                width: { ideal: 640, max: 1280 },
-                height: { ideal: 480, max: 720 },
+                width: { ideal: 480, max: 640 },
+                height: { ideal: 360, max: 480 },
                 facingMode: 'user'
             },
             audio: false
@@ -263,8 +265,8 @@ async function startCamera() {
         videoElement.onloadedmetadata = () => {
             videoElement.play();
             
-            canvas.width = videoElement.videoWidth || 640;
-            canvas.height = videoElement.videoHeight || 480;
+            canvas.width = videoElement.videoWidth || 480;
+            canvas.height = videoElement.videoHeight || 360;
             
             elements.videoStream.style.display = 'block';
             elements.cameraPlaceholder.style.display = 'none';
@@ -367,11 +369,16 @@ function startRealTimeDetection() {
         clearInterval(detectionInterval);
     }
     
+    // Increase interval to reduce server load
     detectionInterval = setInterval(async () => {
         if (isStreaming && videoElement && videoElement.readyState >= 2) {
-            await processVideoFrame();
+            const now = Date.now();
+            if (now - lastDetectionTime >= detectionCooldown) {
+                lastDetectionTime = now;
+                await processVideoFrame();
+            }
         }
-    }, 300);
+    }, 500); // Process every 500ms instead of 300ms
 }
 
 async function processVideoFrame() {
@@ -386,8 +393,8 @@ async function processVideoFrame() {
         const tempCanvas = document.createElement('canvas');
         const tempContext = tempCanvas.getContext('2d');
         
-        const videoWidth = videoElement.videoWidth || videoElement.offsetWidth || 640;
-        const videoHeight = videoElement.videoHeight || videoElement.offsetHeight || 480;
+        const videoWidth = Math.min(videoElement.videoWidth || videoElement.offsetWidth || 480, 480);
+        const videoHeight = Math.min(videoElement.videoHeight || videoElement.offsetHeight || 360, 360);
         
         tempCanvas.width = videoWidth;
         tempCanvas.height = videoHeight;
@@ -412,8 +419,10 @@ async function processVideoFrame() {
                     const result = await response.json();
                     console.log("Received response from server:", result);
                     
-                    if (result.success && result.detections) {
+                    if (result.success && result.detections && !result.rate_limited) {
                         drawDetectionBoxes(result.detections, tempCanvas.width, tempCanvas.height);
+                    } else if (result.rate_limited) {
+                        console.log("Frame processing rate limited by server");
                     } else {
                         console.log("No detections or error in response");
                         clearDetectionBoxes();
@@ -426,7 +435,7 @@ async function processVideoFrame() {
                 console.log("Failed to create blob from canvas");
                 clearDetectionBoxes();
             }
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.7); // Reduced quality to 0.7 from 0.8
         
     } catch (error) {
         console.error('Video frame processing error:', error);
