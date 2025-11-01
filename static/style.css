@@ -444,8 +444,8 @@ body::before {
     pointer-events: none;
     z-index: 1000;
     box-sizing: border-box;
-    transform: translateZ(0); /* Force hardware acceleration */
-    will-change: left, top, width, height; /* Optimize for animations */
+    transform: translateZ(0);
+    will-change: left, top, width, height;
 }
 
 .detection-label-box {
@@ -455,7 +455,7 @@ body::before {
     letter-spacing: 0.5px;
     white-space: nowrap;
     box-sizing: border-box;
-    transform: translateZ(0); /* Force hardware acceleration */
+    transform: translateZ(0);
 }
 
 .camera-help {
@@ -624,12 +624,6 @@ body::before {
     text-align: center;
     padding: 2rem;
     color: var(--text-secondary);
-}
-
-.no-detections-icon {
-    font-size: 2rem;
-    margin-bottom: 1rem;
-    color: var(--text-muted);
 }
 
 .about-section {

@@ -2,7 +2,6 @@
 
 A modern, real-time face mask detection web application built with Flask, TensorFlow, and OpenCV. This application provides both image upload and live camera detection capabilities with a sleek dark glassmorphism UI.
 
-
 ## 🎯 Overview
 
 This project implements a comprehensive face mask detection system that combines deep learning with an intuitive web interface. The application can detect whether individuals are wearing masks in real-time through webcam feeds or uploaded images, making it perfect for health compliance monitoring in various environments.
@@ -306,6 +305,7 @@ I've identified and fixed several issues that were causing the frontend to be "b
 - Improved detection box positioning and scaling to match the camera view
 - Added proper error handling and cleanup of detection boxes
 - Reduced image quality for faster processing while maintaining accuracy
+- Increased detection frequency from 1 second to 300ms for smoother real-time detection
 
 ### 3. CSS Styling Fixes
 - Improved camera view sizing and positioning
@@ -318,13 +318,17 @@ I've identified and fixed several issues that were causing the frontend to be "b
 - Added better memory management with explicit garbage collection
 - Enhanced model loading and error checking
 
-### 5. Detection Box Rendering Fixes
+### 5. Docker Configuration
+- Added environment variables to optimize TensorFlow performance
+- Set proper Flask environment variables for production deployment
+
+### 6. Detection Box Rendering Fixes
 - Fixed detection box positioning to properly display red frames for unmasked faces and green frames for masked faces
 - Improved scaling calculations to ensure boxes align correctly with detected faces
 - Added debugging information to help troubleshoot rendering issues
 - Enhanced error handling for cases where detection fails
 
-### 6. Deployment Scripts
+### 7. Deployment Scripts
 - Added redeployment scripts for both Windows (.bat) and Unix (.sh) systems
 
 ## Deployment Instructions

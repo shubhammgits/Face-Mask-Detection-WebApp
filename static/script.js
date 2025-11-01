@@ -263,7 +263,6 @@ async function startCamera() {
         videoElement.onloadedmetadata = () => {
             videoElement.play();
             
-            // Set canvas dimensions
             canvas.width = videoElement.videoWidth || 640;
             canvas.height = videoElement.videoHeight || 480;
             
@@ -282,7 +281,6 @@ async function startCamera() {
             isStreaming = true;
             updateCameraStatus('Live streaming...', 'active');
             
-            // Add a small delay before starting detection to ensure video is ready
             setTimeout(() => {
                 startRealTimeDetection();
             }, 1000);
@@ -369,29 +367,25 @@ function startRealTimeDetection() {
         clearInterval(detectionInterval);
     }
     
-    // Start detection with a reasonable interval
     detectionInterval = setInterval(async () => {
         if (isStreaming && videoElement && videoElement.readyState >= 2) {
             await processVideoFrame();
         }
-    }, 1000); // Process every 1 second
+    }, 300);
 }
 
 async function processVideoFrame() {
     try {
         console.log("Processing video frame...");
         
-        // Check if video is ready
         if (!videoElement || videoElement.readyState < 2) {
             console.log("Video not ready yet");
             return;
         }
         
-        // Create a temporary canvas to capture the video frame
         const tempCanvas = document.createElement('canvas');
         const tempContext = tempCanvas.getContext('2d');
         
-        // Set canvas dimensions to match video
         const videoWidth = videoElement.videoWidth || videoElement.offsetWidth || 640;
         const videoHeight = videoElement.videoHeight || videoElement.offsetHeight || 480;
         
@@ -401,10 +395,8 @@ async function processVideoFrame() {
         console.log("Canvas dimensions:", tempCanvas.width, "x", tempCanvas.height);
         console.log("Video dimensions:", videoWidth, "x", videoHeight);
         
-        // Draw the current video frame to the canvas
         tempContext.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
         
-        // Convert canvas to blob and send to server
         tempCanvas.toBlob(async (blob) => {
             if (blob) {
                 console.log("Sending frame to server...");
@@ -424,7 +416,6 @@ async function processVideoFrame() {
                         drawDetectionBoxes(result.detections, tempCanvas.width, tempCanvas.height);
                     } else {
                         console.log("No detections or error in response");
-                        // Clear any existing boxes
                         clearDetectionBoxes();
                     }
                 } catch (error) {
@@ -435,7 +426,7 @@ async function processVideoFrame() {
                 console.log("Failed to create blob from canvas");
                 clearDetectionBoxes();
             }
-        }, 'image/jpeg', 0.8); // Reduced quality for faster processing
+        }, 'image/jpeg', 0.8);
         
     } catch (error) {
         console.error('Video frame processing error:', error);
@@ -452,27 +443,22 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
     console.log("Drawing detection boxes:", detections);
     console.log("Frame dimensions:", frameWidth, "x", frameHeight);
     
-    // Clear existing boxes
     clearDetectionBoxes();
     
-    // If no detections, exit early
     if (!detections || detections.length === 0) {
         console.log("No detections to draw");
         return;
     }
     
-    // Get the camera view and video elements
     const cameraView = elements.cameraView;
     const videoElement = elements.videoStream;
     
-    // Get dimensions
     const videoRect = videoElement.getBoundingClientRect();
     const cameraRect = cameraView.getBoundingClientRect();
     
     console.log("Video rect:", videoRect);
     console.log("Camera rect:", cameraRect);
     
-    // Calculate scaling factors
     const scaleX = videoRect.width / frameWidth;
     const scaleY = videoRect.height / frameHeight;
     
@@ -482,7 +468,6 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
         const box = document.createElement('div');
         box.className = 'detection-box';
         
-        // Scale the bounding box coordinates
         const x = detection.bbox[0] * scaleX;
         const y = detection.bbox[1] * scaleY;
         const width = detection.bbox[2] * scaleX;
@@ -490,7 +475,6 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
         
         console.log("Detection box:", detection, "Scaled:", x, y, width, height);
         
-        // Set box styles
         const borderColor = detection.label === 'Masked' ? '#00ff00' : '#ff0000';
         
         box.style.cssText = `
@@ -506,7 +490,6 @@ function drawDetectionBoxes(detections, frameWidth, frameHeight) {
             box-sizing: border-box;
         `;
         
-        // Create label
         const label = document.createElement('div');
         label.className = 'detection-label-box';
         label.textContent = `${detection.label}: ${detection.confidence.toFixed(1)}%`;

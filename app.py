@@ -1,15 +1,12 @@
 import os
 import numpy as np
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
 import base64
-from io import BytesIO
 import logging
 import gc
 
-# Configure TensorFlow to use less memory
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Reduce TensorFlow logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 tensorflow_available = False
 tf_module = None
@@ -20,7 +17,6 @@ try:
     tf_module = tf
     tensorflow_available = True
     print("TensorFlow loaded successfully")
-    # Configure TensorFlow to use less memory
     try:
         if hasattr(tf, 'config') and hasattr(tf.config, 'experimental'):
             gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -57,7 +53,7 @@ CORS(app)
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # Reduced from 10MB to 5MB
+MAX_FILE_SIZE = 5 * 1024 * 1024
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
@@ -85,9 +81,7 @@ def load_model_and_cascade():
         print(f"Model file exists: {os.path.exists(model_path)}")
         if os.path.exists(model_path):
             try:
-                # Load model with memory optimization
                 if tf_module is not None:
-                    # Try accessing keras safely
                     keras_attr = getattr(tf_module, 'keras', None)
                     if keras_attr is not None:
                         models_attr = getattr(keras_attr, 'models', None)
@@ -98,7 +92,6 @@ def load_model_and_cascade():
                                 model = load_model_func(model_path)
                                 model_loaded = True
                                 print("Face mask detection model loaded successfully")
-                                # Print model info
                                 try:
                                     print(f"Model input shape: {model.input_shape}")
                                     print(f"Model output shape: {model.output_shape}")
@@ -150,8 +143,7 @@ def load_model_and_cascade():
     print("=== MODEL AND CASCADE LOADING COMPLETE ===")
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 if cv2_module is not None and tf_module is not None:
     def calculate_iou(box1, box2):
@@ -242,7 +234,6 @@ if cv2_module is not None and tf_module is not None:
         try:
             print("Converting to grayscale...")
             if cv2_module is not None and hasattr(cv2_module, 'cvtColor'):
-                # Check if COLOR_BGR2GRAY is available
                 color_bgr2gray = getattr(cv2_module, 'COLOR_BGR2GRAY', None)
                 if color_bgr2gray is not None:
                     gray = cv2_module.cvtColor(image, color_bgr2gray)
@@ -272,11 +263,9 @@ if cv2_module is not None and tf_module is not None:
                 print("=== DETECTION COMPLETE (EMPTY) ===")
                 return []
             
-            # Filter faces by size and position
             faces = filter_faces_by_size_and_position(faces, image.shape, min_size_ratio=0.03, max_size_ratio=0.8)
             print(f"Filtered to {len(faces)} faces")
             
-            # Apply non-max suppression if we have multiple faces
             if len(faces) > 1:
                 faces = non_max_suppression(faces, overlap_threshold=0.3)
                 print(f"After NMS: {len(faces)} faces")
@@ -286,7 +275,6 @@ if cv2_module is not None and tf_module is not None:
             for (x, y, w, h) in faces:
                 print(f"Processing face at ({x}, {y}) with size ({w}, {h})")
                 
-                # Extract face region
                 try:
                     face_img = image[y:y+h, x:x+w]
                     if face_img.size == 0:
@@ -296,7 +284,6 @@ if cv2_module is not None and tf_module is not None:
                     print(f"Error extracting face region: {e}")
                     continue
                 
-                # Resize face for model input
                 if cv2_module is not None and hasattr(cv2_module, 'resize'):
                     try:
                         face_img_resized = cv2_module.resize(face_img, (224, 224))
@@ -308,9 +295,7 @@ if cv2_module is not None and tf_module is not None:
                     print("OpenCV resize not available")
                     continue
                     
-                # Convert to array for model
                 if tf_module is not None:
-                    # Try accessing keras safely
                     keras_attr = getattr(tf_module, 'keras', None)
                     if keras_attr is not None:
                         utils_attr = getattr(keras_attr, 'utils', None)
@@ -336,7 +321,6 @@ if cv2_module is not None and tf_module is not None:
                     print("TensorFlow not available")
                     continue
                     
-                # Expand dimensions and normalize
                 if tf_module is not None and hasattr(tf_module, 'expand_dims'):
                     try:
                         face_img_array = tf_module.expand_dims(face_img_array, 0)
@@ -351,7 +335,6 @@ if cv2_module is not None and tf_module is not None:
                 face_img_array /= 255.0
                 print("Image normalized successfully")
                 
-                # Make prediction
                 try:
                     print("Predicting mask...")
                     prediction = model.predict(face_img_array, verbose=0)
@@ -408,7 +391,6 @@ if cv2_module is not None and tf_module is not None:
             
             label_text = f"{label}: {confidence:.1f}%"
             if cv2_module is not None and hasattr(cv2_module, 'putText'):
-                # Check if FONT_HERSHEY_SIMPLEX is available
                 font_hershey_simplex = getattr(cv2_module, 'FONT_HERSHEY_SIMPLEX', None)
                 if font_hershey_simplex is not None:
                     cv2_module.putText(image_copy, label_text, (x, y - 10), 
@@ -452,7 +434,6 @@ def upload_file():
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
             
-        # Check file size
         file.seek(0, os.SEEK_END)
         file_length = file.tell()
         file.seek(0)
@@ -466,7 +447,6 @@ def upload_file():
         if imdecode_func is not None and imread_color is not None:
             image = imdecode_func(file_bytes, imread_color)
         else:
-            # Fallback to TensorFlow if available
             io_attr = getattr(tf_module, 'io', None) if tf_module is not None else None
             if io_attr is not None:
                 decode_image_func = getattr(io_attr, 'decode_image', None)
@@ -496,13 +476,11 @@ def upload_file():
             else:
                 img_str = ""
         else:
-            # Fallback to TensorFlow if available
             io_attr = getattr(tf_module, 'io', None) if tf_module is not None else None
             if io_attr is not None:
                 encode_jpeg_func = getattr(io_attr, 'encode_jpeg', None)
                 if encode_jpeg_func is not None:
                     encoded_image = encode_jpeg_func(processed_image)
-                    # Convert to bytes properly
                     try:
                         if hasattr(encoded_image, 'numpy'):
                             img_bytes = encoded_image.numpy()
@@ -516,7 +494,6 @@ def upload_file():
             else:
                 img_str = ""
         
-        # Force garbage collection
         try:
             del image
             del file_bytes
@@ -534,13 +511,11 @@ def upload_file():
     except Exception as e:
         print(f"Error processing upload: {str(e)}")
         logger.error(f"Error processing upload: {str(e)}")
-        # Force garbage collection on error
         gc.collect()
         return jsonify({'success': False, 'error': f'Processing failed: {str(e)}'}), 500
 
 @app.route('/process_frame', methods=['POST'])
 def process_frame():
-    """Optimized version that uses less memory"""
     print("=== PROCESS FRAME ENDPOINT CALLED ===")
     try:
         if 'frame' not in request.files:
@@ -549,35 +524,30 @@ def process_frame():
             
         file = request.files['frame']
         
-        # Check file size
         file.seek(0, os.SEEK_END)
         file_length = file.tell()
         file.seek(0)
         
-        if file_length > 2 * 1024 * 1024:  # 2MB limit
+        if file_length > 2 * 1024 * 1024:
             print("Frame too large")
             return jsonify({'success': False, 'error': 'Frame too large'}), 400
         
-        # Read file bytes
         file_bytes = file.read()
         if len(file_bytes) == 0:
             print("Empty frame data")
             return jsonify({'success': False, 'error': 'Empty frame data'}), 400
         
-        # Decode image
         nparr = np.frombuffer(file_bytes, np.uint8)
         imdecode_func = getattr(cv2_module, 'imdecode', None) if cv2_module is not None else None
         imread_color = getattr(cv2_module, 'IMREAD_COLOR', None) if cv2_module is not None else None
         if imdecode_func is not None and imread_color is not None:
             image = imdecode_func(nparr, imread_color)
         else:
-            # Fallback to TensorFlow if available
             io_attr = getattr(tf_module, 'io', None) if tf_module is not None else None
             if io_attr is not None:
                 decode_image_func = getattr(io_attr, 'decode_image', None)
                 if decode_image_func is not None:
                     image = decode_image_func(file_bytes, channels=3)
-                    # Convert to numpy array if needed
                     if hasattr(image, 'numpy'):
                         image = image.numpy()
                 else:
@@ -591,7 +561,6 @@ def process_frame():
             
         print(f"Frame decoded successfully. Shape: {image.shape}")
         
-        # Resize image for faster processing if it's too large
         max_dimension = 640
         height, width = image.shape[:2]
         if max(height, width) > max_dimension:
@@ -607,7 +576,6 @@ def process_frame():
         detections = detect_faces_and_masks(image)
         print(f"Found {len(detections)} faces in frame")
         
-        # Force garbage collection to free memory
         try:
             del image
             del nparr
@@ -625,7 +593,6 @@ def process_frame():
     except Exception as e:
         print(f"Error processing frame: {str(e)}")
         logger.error(f"Error processing frame: {str(e)}", exc_info=True)
-        # Force garbage collection on error
         gc.collect()
         return jsonify({'success': False, 'error': f'Frame processing failed: {str(e)}'}), 500
 
@@ -644,7 +611,6 @@ if __name__ == '__main__':
     load_model_and_cascade()
     print("Model loading complete")
     
-    # For Render deployment, we don't want debug mode
     if os.environ.get('RENDER'):
         app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     else:
