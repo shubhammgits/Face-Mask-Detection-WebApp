@@ -1,20 +1,19 @@
-# Face Mask Detection Web Application
+# Face Mask Detection using Deep Learning
 
-A modern, real-time face mask detection web application built with Flask, TensorFlow, and OpenCV. This application provides both image upload and live camera detection capabilities with a sleek dark glassmorphism UI.
+A modern face mask detection web application built with Flask, TensorFlow, and OpenCV. This application provides image upload and camera capture capabilities with a sleek dark glassmorphism UI.
 
 ## 🎯 Overview
 
-This project implements a comprehensive face mask detection system that combines deep learning with an intuitive web interface. The application can detect whether individuals are wearing masks in real-time through webcam feeds or uploaded images, making it perfect for health compliance monitoring in various environments.
+This project implements a comprehensive face mask detection system that combines deep learning with an intuitive web interface. The application can detect whether individuals are wearing masks in uploaded images or captured photos, making it perfect for health compliance monitoring in various environments.
 
 ## ✨ Features
 
-- **Real-time Camera Detection**: Live webcam feed with instant mask detection
 - **Image Upload & Analysis**: Drag-and-drop image upload with batch processing
+- **Camera Capture**: Take photos directly from your device's camera for analysis
 - **High Accuracy Detection**: 99.2%+ accuracy using MobileNetV2 architecture
 - **Modern UI Design**: Dark glassmorphism theme with cyan blue accents
 - **Responsive Design**: Works seamlessly across desktop, tablet, and mobile devices
 - **Privacy-First**: All processing done locally - images never leave your device
-- **Lightweight & Fast**: Optimized for real-time performance
 
 ## 🏗️ Architecture
 
@@ -43,7 +42,7 @@ This project implements a comprehensive face mask detection system that combines
 ## 🚀 How It Works
 
 ### 1. Face Detection Pipeline
-- **Input Processing**: Images/video frames are captured and preprocessed
+- **Input Processing**: Images are captured or uploaded and preprocessed
 - **Face Detection**: Haar Cascade classifier identifies faces in the image
 - **Region Extraction**: Face regions are extracted and normalized to 224x224 pixels
 - **Classification**: MobileNetV2 model predicts mask/no-mask with confidence scores
@@ -181,7 +180,6 @@ export CONFIDENCE_THRESHOLD=0.5
 - **Model Size**: ~15MB (optimized for deployment)
 
 ### Detection Capabilities
-- **Real-time Processing**: 15-30 FPS depending on hardware
 - **Multi-face Detection**: Simultaneous detection of multiple faces
 - **Lighting Adaptation**: Robust performance across various lighting conditions
 - **Angle Tolerance**: Effective detection from multiple viewing angles
@@ -211,27 +209,6 @@ Response:
 }
 ```
 
-### Live Camera Stream Processing
-```http
-POST /process_frame
-Content-Type: multipart/form-data
-
-Parameters:
-- frame: Image frame from webcam
-
-Response:
-{
-  "success": true,
-  "detections": [
-    {
-      "label": "Masked" | "No Mask",
-      "confidence": 0.95,
-      "bbox": [x, y, width, height]
-    }
-  ]
-}
-```
-
 ### Health Check
 ```http
 GET /health
@@ -255,6 +232,7 @@ Response:
 
 ### Interactive Elements
 - **Drag & Drop**: Intuitive file upload interface
+- **Camera Capture**: Direct photo capture from device camera
 - **Real-time Feedback**: Instant visual feedback for all actions
 - **Animated Particles**: Subtle background animations
 - **Progressive Enhancement**: Works without JavaScript enabled
@@ -293,50 +271,12 @@ We welcome contributions from the community! Here's how you can help:
 - Ensure responsive design compatibility
 - Test across multiple browsers and devices
 
-## Fixed Issues
-
-I've identified and fixed several issues that were causing the frontend to be "bad" and the live detection not to work:
-
-### 1. Render Deployment Plan
-- Updated `render.yaml` to use the "standard" plan instead of "free" to provide more memory for the application
-
-### 2. Frontend JavaScript Improvements
-- Fixed camera frame processing to properly capture and send video frames to the server
-- Improved detection box positioning and scaling to match the camera view
-- Added proper error handling and cleanup of detection boxes
-- Reduced image quality for faster processing while maintaining accuracy
-- Increased detection frequency from 1 second to 300ms for smoother real-time detection
-
-### 3. CSS Styling Fixes
-- Improved camera view sizing and positioning
-- Fixed detection box styling for better visibility
-- Enhanced responsive design for different screen sizes
-
-### 4. Backend Processing Improvements
-- Added image resizing for large frames to reduce memory usage
-- Improved error handling and logging throughout the detection process
-- Added better memory management with explicit garbage collection
-- Enhanced model loading and error checking
-
-### 5. Docker Configuration
-- Added environment variables to optimize TensorFlow performance
-- Set proper Flask environment variables for production deployment
-
-### 6. Detection Box Rendering Fixes
-- Fixed detection box positioning to properly display red frames for unmasked faces and green frames for masked faces
-- Improved scaling calculations to ensure boxes align correctly with detected faces
-- Added debugging information to help troubleshoot rendering issues
-- Enhanced error handling for cases where detection fails
-
-### 7. Deployment Scripts
-- Added redeployment scripts for both Windows (.bat) and Unix (.sh) systems
-
 ## Deployment Instructions
 
 1. Commit your changes:
    ```bash
    git add .
-   git commit -m "Fix detection box rendering issues"
+   git commit -m "Update to image-based detection system"
    ```
 
 2. Push to your Render repository:
@@ -348,16 +288,15 @@ I've identified and fixed several issues that were causing the frontend to be "b
 
 ## Troubleshooting
 
-If you still experience issues:
+If you experience issues:
 
 1. Check the Render logs for any error messages
 2. Ensure your model file (`best_mask_model.h5`) is properly included
 3. Verify that all required files are present in the repository
-4. Check that the Render service is using the "standard" plan
-5. Open browser developer tools (F12) and check the Console tab for JavaScript errors
-6. Check the Network tab to verify that requests to `/process_frame` are successful
+4. Open browser developer tools (F12) and check the Console tab for JavaScript errors
+5. Check the Network tab to verify that requests to `/upload` are successful
 
-The application should now properly detect faces in both uploaded images and live camera feed, displaying green boxes for masked faces and red boxes for unmasked faces with accuracy percentages.
+The application should now properly detect faces in both uploaded images and captured photos, displaying green boxes for masked faces and red boxes for unmasked faces with accuracy percentages.
 
 ## 🙏 Acknowledgments
 

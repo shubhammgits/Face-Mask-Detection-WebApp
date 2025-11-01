@@ -1,13 +1,10 @@
-let currentMode = 'upload';
-let isStreaming = false;
+let currentMode = 'capture';
 let uploadedFile = null;
+let capturedImageData = null;
 let mediaStream = null;
 let videoElement = null;
-let canvas = null;
-let context = null;
-let detectionInterval = null;
-let lastDetectionTime = 0;
-let detectionCooldown = 500; // Minimum ms between detections
+let captureCanvas = null;
+let captureContext = null;
 
 const elements = {
     modeTabs: document.querySelectorAll('.mode-tab'),
@@ -18,12 +15,17 @@ const elements = {
     previewImage: document.getElementById('preview-image'),
     analyzeBtn: document.getElementById('analyze-btn'),
     clearBtn: document.getElementById('clear-btn'),
-    cameraView: document.getElementById('camera-view'),
-    cameraPlaceholder: document.getElementById('camera-placeholder'),
+    captureView: document.getElementById('capture-view'),
+    capturePlaceholder: document.getElementById('capture-placeholder'),
     videoStream: document.getElementById('video-stream'),
-    startCameraBtn: document.getElementById('start-camera'),
-    stopCameraBtn: document.getElementById('stop-camera'),
-    cameraStatus: document.getElementById('camera-status'),
+    captureCanvas: document.getElementById('capture-canvas'),
+    capturePreview: document.getElementById('capture-preview'),
+    capturedImage: document.getElementById('captured-image'),
+    startCaptureBtn: document.getElementById('start-capture'),
+    captureBtn: document.getElementById('capture-btn'),
+    stopCaptureBtn: document.getElementById('stop-capture'),
+    analyzeCaptureBtn: document.getElementById('analyze-capture-btn'),
+    retakeBtn: document.getElementById('retake-btn'),
     resultsPanel: document.getElementById('results-panel'),
     resultsContent: document.getElementById('results-content'),
     closeResultsBtn: document.getElementById('close-results'),
@@ -33,7 +35,7 @@ const elements = {
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     initializeNavigation();
-    initializeCamera();
+    initializeCapture();
     checkSystemStatus();
 });
 
@@ -42,6 +44,7 @@ function initializeEventListeners() {
         tab.addEventListener('click', () => switchMode(tab.dataset.mode));
     });
     
+    // Upload events
     if (elements.uploadArea) {
         elements.uploadArea.addEventListener('click', () => elements.fileInput.click());
         elements.uploadArea.addEventListener('dragover', handleDragOver);
@@ -54,19 +57,32 @@ function initializeEventListeners() {
     }
     
     if (elements.analyzeBtn) {
-        elements.analyzeBtn.addEventListener('click', analyzeImage);
+        elements.analyzeBtn.addEventListener('click', analyzeUploadedImage);
     }
     
     if (elements.clearBtn) {
         elements.clearBtn.addEventListener('click', clearUpload);
     }
     
-    if (elements.startCameraBtn) {
-        elements.startCameraBtn.addEventListener('click', startCamera);
+    // Capture events
+    if (elements.startCaptureBtn) {
+        elements.startCaptureBtn.addEventListener('click', startCapture);
     }
     
-    if (elements.stopCameraBtn) {
-        elements.stopCameraBtn.addEventListener('click', stopCamera);
+    if (elements.captureBtn) {
+        elements.captureBtn.addEventListener('click', captureImage);
+    }
+    
+    if (elements.stopCaptureBtn) {
+        elements.stopCaptureBtn.addEventListener('click', stopCapture);
+    }
+    
+    if (elements.analyzeCaptureBtn) {
+        elements.analyzeCaptureBtn.addEventListener('click', analyzeCapturedImage);
+    }
+    
+    if (elements.retakeBtn) {
+        elements.retakeBtn.addEventListener('click', retakeImage);
     }
     
     if (elements.closeResultsBtn) {
@@ -86,11 +102,10 @@ function initializeNavigation() {
     });
 }
 
-function initializeCamera() {
+function initializeCapture() {
     videoElement = elements.videoStream;
-    
-    canvas = document.createElement('canvas');
-    context = canvas.getContext('2d');
+    captureCanvas = elements.captureCanvas;
+    captureContext = captureCanvas.getContext('2d');
     
     if (videoElement) {
         videoElement.setAttribute('playsinline', 'true');
@@ -124,16 +139,17 @@ function switchMode(mode) {
     });
     
     if (mode === 'upload') {
-        stopCamera();
+        stopCapture();
         clearUpload();
-    } else if (mode === 'camera') {
+    } else if (mode === 'capture') {
         clearUpload();
-        stopCamera();
+        stopCapture();
     }
     
     closeResults();
 }
 
+// Upload functions
 function handleDragOver(e) {
     e.preventDefault();
     elements.uploadArea.classList.add('dragover');
@@ -190,7 +206,140 @@ function clearUpload() {
     closeResults();
 }
 
-async function analyzeImage() {
+// Capture functions
+async function startCapture() {
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Camera not supported by this browser. Please use a modern browser with HTTPS.');
+        }
+        
+        const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
+        if (!isSecureContext) {
+            throw new Error('Camera access requires HTTPS. Please use a secure connection.');
+        }
+        
+        const constraints = {
+            video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user'
+            },
+            audio: false
+        };
+        
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        videoElement.srcObject = mediaStream;
+        
+        videoElement.onloadedmetadata = () => {
+            videoElement.play();
+            
+            elements.videoStream.style.display = 'block';
+            elements.capturePlaceholder.style.display = 'none';
+            elements.startCaptureBtn.style.display = 'none';
+            elements.captureBtn.style.display = 'inline-block';
+            elements.stopCaptureBtn.style.display = 'inline-block';
+            
+            const helpElement = document.getElementById('capture-help');
+            if (helpElement) {
+                helpElement.style.display = 'none';
+            }
+        };
+        
+        videoElement.onerror = (error) => {
+            throw new Error('Failed to start video stream');
+        };
+        
+    } catch (error) {
+        let errorMessage = 'Camera access failed';
+        let helpText = '';
+        
+        if (error.name === 'NotAllowedError') {
+            errorMessage = 'Camera permission denied';
+            helpText = 'Please click the camera icon in your browser\'s address bar and allow camera access, then try again.';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = 'No camera found on this device';
+            helpText = 'Please ensure your device has a camera and it\'s not being used by another application.';
+        } else if (error.name === 'NotSupportedError') {
+            errorMessage = 'Camera not supported by this browser';
+            helpText = 'Please try using Chrome, Firefox, Safari, or Edge with the latest version.';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = 'Camera is already in use';
+            helpText = 'Please close other applications that might be using your camera and try again.';
+        } else if (error.name === 'OverconstrainedError') {
+            errorMessage = 'Camera constraints cannot be satisfied';
+            helpText = 'Your camera doesn\'t support the required video settings.';
+        } else if (!navigator.mediaDevices) {
+            errorMessage = 'MediaDevices API not supported';
+            helpText = 'Please use HTTPS or localhost. Camera access requires a secure connection.';
+        } else {
+            errorMessage = `Camera error: ${error.message}`;
+            helpText = 'Please ensure you\'re using HTTPS and have granted camera permissions.';
+        }
+        
+        showNotification(`${errorMessage}. ${helpText}`, 'error');
+        stopCapture();
+    }
+}
+
+function stopCapture() {
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+    
+    if (videoElement) {
+        videoElement.srcObject = null;
+        videoElement.style.display = 'none';
+    }
+    
+    elements.capturePlaceholder.style.display = 'flex';
+    elements.startCaptureBtn.style.display = 'inline-block';
+    elements.captureBtn.style.display = 'none';
+    elements.stopCaptureBtn.style.display = 'none';
+    
+    const helpElement = document.getElementById('capture-help');
+    if (helpElement) {
+        helpElement.style.display = 'block';
+    }
+    
+    closeResults();
+}
+
+function captureImage() {
+    if (!videoElement || videoElement.readyState < 2) {
+        showNotification('Video stream not ready', 'error');
+        return;
+    }
+    
+    // Set canvas dimensions to match video
+    captureCanvas.width = videoElement.videoWidth;
+    captureCanvas.height = videoElement.videoHeight;
+    
+    // Draw current video frame to canvas
+    captureContext.drawImage(videoElement, 0, 0, captureCanvas.width, captureCanvas.height);
+    
+    // Convert to data URL
+    const dataURL = captureCanvas.toDataURL('image/jpeg', 0.9);
+    
+    // Display captured image
+    elements.capturedImage.src = dataURL;
+    elements.capturePreview.style.display = 'block';
+    elements.captureView.style.display = 'none';
+    
+    // Store image data for analysis
+    capturedImageData = dataURL;
+}
+
+function retakeImage() {
+    elements.capturePreview.style.display = 'none';
+    elements.captureView.style.display = 'block';
+    capturedImageData = null;
+    closeResults();
+}
+
+// Analysis functions
+async function analyzeUploadedImage() {
     if (!uploadedFile) {
         showNotification('Please select an image first', 'error');
         return;
@@ -223,311 +372,40 @@ async function analyzeImage() {
     }
 }
 
-async function startCamera() {
-    try {
-        updateCameraStatus('Starting camera...', 'loading');
-        
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Camera not supported by this browser. Please use a modern browser with HTTPS.');
-        }
-        
-        const isSecureContext = window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost';
-        if (!isSecureContext) {
-            throw new Error('Camera access requires HTTPS. Please use a secure connection.');
-        }
-        
-        const constraints = {
-            video: {
-                width: { ideal: 480, max: 640 },
-                height: { ideal: 360, max: 480 },
-                facingMode: 'user'
-            },
-            audio: false
-        };
-        
-        try {
-            mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (constraintError) {
-            const basicConstraints = {
-                video: true,
-                audio: false
-            };
-            
-            try {
-                mediaStream = await navigator.mediaDevices.getUserMedia(basicConstraints);
-            } catch (basicError) {
-                throw basicError;
-            }
-        }
-        
-        videoElement.srcObject = mediaStream;
-        
-        videoElement.onloadedmetadata = () => {
-            videoElement.play();
-            
-            canvas.width = videoElement.videoWidth || 480;
-            canvas.height = videoElement.videoHeight || 360;
-            
-            elements.videoStream.style.display = 'block';
-            elements.cameraPlaceholder.style.display = 'none';
-            elements.startCameraBtn.style.display = 'none';
-            elements.stopCameraBtn.style.display = 'inline-block';
-            
-            elements.cameraView.classList.add('streaming');
-            
-            const helpElement = document.getElementById('camera-help');
-            if (helpElement) {
-                helpElement.style.display = 'none';
-            }
-            
-            isStreaming = true;
-            updateCameraStatus('Live streaming...', 'active');
-            
-            setTimeout(() => {
-                startRealTimeDetection();
-            }, 1000);
-        };
-        
-        videoElement.onerror = (error) => {
-            throw new Error('Failed to start video stream');
-        };
-        
-    } catch (error) {
-        let errorMessage = 'Camera access failed';
-        let helpText = '';
-        
-        if (error.name === 'NotAllowedError') {
-            errorMessage = 'Camera permission denied';
-            helpText = 'Please click the camera icon in your browser\'s address bar and allow camera access, then try again.';
-        } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No camera found on this device';
-            helpText = 'Please ensure your device has a camera and it\'s not being used by another application.';
-        } else if (error.name === 'NotSupportedError') {
-            errorMessage = 'Camera not supported by this browser';
-            helpText = 'Please try using Chrome, Firefox, Safari, or Edge with the latest version.';
-        } else if (error.name === 'NotReadableError') {
-            errorMessage = 'Camera is already in use';
-            helpText = 'Please close other applications that might be using your camera and try again.';
-        } else if (error.name === 'OverconstrainedError') {
-            errorMessage = 'Camera constraints cannot be satisfied';
-            helpText = 'Your camera doesn\'t support the required video settings. This should not happen with our fallback constraints.';
-        } else if (!navigator.mediaDevices) {
-            errorMessage = 'MediaDevices API not supported';
-            helpText = 'Please use HTTPS or localhost. Camera access requires a secure connection.';
-        } else {
-            errorMessage = `Camera error: ${error.message}`;
-            helpText = 'Please ensure you\'re using HTTPS and have granted camera permissions.';
-        }
-        
-        updateCameraStatus('Camera failed to start', 'error');
-        showNotification(`${errorMessage}. ${helpText}`, 'error');
-        
-        stopCamera();
-    }
-}
-
-function stopCamera() {
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-    }
-    
-    if (detectionInterval) {
-        clearInterval(detectionInterval);
-        detectionInterval = null;
-    }
-    
-    if (videoElement) {
-        videoElement.srcObject = null;
-        videoElement.style.display = 'none';
-    }
-    
-    if (elements.cameraView) {
-        elements.cameraView.classList.remove('streaming');
-        
-        const existingBoxes = elements.cameraView.querySelectorAll('.detection-box');
-        existingBoxes.forEach(box => box.remove());
-    }
-    
-    elements.cameraPlaceholder.style.display = 'flex';
-    elements.startCameraBtn.style.display = 'inline-block';
-    elements.stopCameraBtn.style.display = 'none';
-    
-    const helpElement = document.getElementById('camera-help');
-    if (helpElement) {
-        helpElement.style.display = 'block';
-    }
-    
-    isStreaming = false;
-    updateCameraStatus('Ready', 'ready');
-    
-    closeResults();
-}
-
-function startRealTimeDetection() {
-    if (detectionInterval) {
-        clearInterval(detectionInterval);
-    }
-    
-    // Increase interval to reduce server load
-    detectionInterval = setInterval(async () => {
-        if (isStreaming && videoElement && videoElement.readyState >= 2) {
-            const now = Date.now();
-            if (now - lastDetectionTime >= detectionCooldown) {
-                lastDetectionTime = now;
-                await processVideoFrame();
-            }
-        }
-    }, 500); // Process every 500ms instead of 300ms
-}
-
-async function processVideoFrame() {
-    try {
-        console.log("Processing video frame...");
-        
-        if (!videoElement || videoElement.readyState < 2) {
-            console.log("Video not ready yet");
-            return;
-        }
-        
-        const tempCanvas = document.createElement('canvas');
-        const tempContext = tempCanvas.getContext('2d');
-        
-        const videoWidth = Math.min(videoElement.videoWidth || videoElement.offsetWidth || 480, 480);
-        const videoHeight = Math.min(videoElement.videoHeight || videoElement.offsetHeight || 360, 360);
-        
-        tempCanvas.width = videoWidth;
-        tempCanvas.height = videoHeight;
-        
-        console.log("Canvas dimensions:", tempCanvas.width, "x", tempCanvas.height);
-        console.log("Video dimensions:", videoWidth, "x", videoHeight);
-        
-        tempContext.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
-        
-        tempCanvas.toBlob(async (blob) => {
-            if (blob) {
-                console.log("Sending frame to server...");
-                const formData = new FormData();
-                formData.append('frame', blob, 'frame.jpg');
-                
-                try {
-                    const response = await fetch('/process_frame', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const result = await response.json();
-                    console.log("Received response from server:", result);
-                    
-                    if (result.success && result.detections && !result.rate_limited) {
-                        drawDetectionBoxes(result.detections, tempCanvas.width, tempCanvas.height);
-                    } else if (result.rate_limited) {
-                        console.log("Frame processing rate limited by server");
-                    } else {
-                        console.log("No detections or error in response");
-                        clearDetectionBoxes();
-                    }
-                } catch (error) {
-                    console.error('Frame processing error:', error);
-                    clearDetectionBoxes();
-                }
-            } else {
-                console.log("Failed to create blob from canvas");
-                clearDetectionBoxes();
-            }
-        }, 'image/jpeg', 0.7); // Reduced quality to 0.7 from 0.8
-        
-    } catch (error) {
-        console.error('Video frame processing error:', error);
-        clearDetectionBoxes();
-    }
-}
-
-function clearDetectionBoxes() {
-    const existingBoxes = elements.cameraView.querySelectorAll('.detection-box');
-    existingBoxes.forEach(box => box.remove());
-}
-
-function drawDetectionBoxes(detections, frameWidth, frameHeight) {
-    console.log("Drawing detection boxes:", detections);
-    console.log("Frame dimensions:", frameWidth, "x", frameHeight);
-    
-    clearDetectionBoxes();
-    
-    if (!detections || detections.length === 0) {
-        console.log("No detections to draw");
+async function analyzeCapturedImage() {
+    if (!capturedImageData) {
+        showNotification('No captured image to analyze', 'error');
         return;
     }
     
-    const cameraView = elements.cameraView;
-    const videoElement = elements.videoStream;
+    showLoading(true);
     
-    const videoRect = videoElement.getBoundingClientRect();
-    const cameraRect = cameraView.getBoundingClientRect();
-    
-    console.log("Video rect:", videoRect);
-    console.log("Camera rect:", cameraRect);
-    
-    const scaleX = videoRect.width / frameWidth;
-    const scaleY = videoRect.height / frameHeight;
-    
-    console.log("Scale factors:", scaleX, scaleY);
-    
-    detections.forEach((detection) => {
-        const box = document.createElement('div');
-        box.className = 'detection-box';
+    try {
+        // Convert data URL to Blob
+        const blob = await fetch(capturedImageData).then(res => res.blob());
         
-        const x = detection.bbox[0] * scaleX;
-        const y = detection.bbox[1] * scaleY;
-        const width = detection.bbox[2] * scaleX;
-        const height = detection.bbox[3] * scaleY;
+        const formData = new FormData();
+        formData.append('file', blob, 'captured_image.jpg');
         
-        console.log("Detection box:", detection, "Scaled:", x, y, width, height);
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
         
-        const borderColor = detection.label === 'Masked' ? '#00ff00' : '#ff0000';
+        const result = await response.json();
         
-        box.style.cssText = `
-            position: absolute;
-            left: ${x}px;
-            top: ${y}px;
-            width: ${width}px;
-            height: ${height}px;
-            border: 3px solid ${borderColor};
-            border-radius: 4px;
-            pointer-events: none;
-            z-index: 1000;
-            box-sizing: border-box;
-        `;
-        
-        const label = document.createElement('div');
-        label.className = 'detection-label-box';
-        label.textContent = `${detection.label}: ${detection.confidence.toFixed(1)}%`;
-        label.style.cssText = `
-            position: absolute;
-            top: -25px;
-            left: 0;
-            background: ${borderColor};
-            color: white;
-            padding: 3px 6px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: bold;
-            white-space: nowrap;
-            font-family: 'Inter', sans-serif;
-            box-sizing: border-box;
-        `;
-        
-        box.appendChild(label);
-        cameraView.appendChild(box);
-    });
-}
-
-function updateCameraStatus(text, state = 'ready') {
-    const statusElement = elements.cameraStatus;
-    if (!statusElement) return;
-    
-    statusElement.className = `camera-status ${state}`;
-    statusElement.querySelector('.status-text').textContent = text;
+        if (result.success) {
+            displayResults(result.image, result.detections);
+            showNotification('Analysis complete!', 'success');
+        } else {
+            throw new Error(result.error || 'Analysis failed');
+        }
+    } catch (error) {
+        console.error('Analysis error:', error);
+        showNotification(`Analysis failed: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
 }
 
 function displayResults(processedImage, detections) {
@@ -630,25 +508,9 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
-function scrollToSection(sectionId) {
-    const section = document.getElementById(sectionId);
-    if (section) {
-        section.scrollIntoView({ behavior: 'smooth' });
-    }
-}
-
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeResults();
-    }
-    
-    if (e.key === ' ' && currentMode === 'camera' && e.target.tagName !== 'INPUT') {
-        e.preventDefault();
-        if (isStreaming) {
-            stopCamera();
-        } else {
-            startCamera();
-        }
     }
 });
 

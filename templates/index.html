@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real time face mask detection</title>
+    <title>Face Mask Detection using Deep Learning</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -23,20 +23,64 @@
             <div class="detection-interface">
                 <div class="interface-header">
                     <h2 class="interface-title">Face Mask Detection</h2>
-                    <p class="interface-subtitle">Choose your detection method below</p>
+                    <p class="interface-subtitle">Capture or upload an image for detection</p>
                 </div>
                 
                 <div class="detection-modes">
                     <div class="mode-tabs">
-                        <button class="mode-tab active" data-mode="upload">
-                            <span class="tab-text">Upload Image</span>
+                        <button class="mode-tab active" data-mode="capture">
+                            <span class="tab-text">Capture Image</span>
                         </button>
-                        <button class="mode-tab" data-mode="camera">
-                            <span class="tab-text">Live Camera</span>
+                        <button class="mode-tab" data-mode="upload">
+                            <span class="tab-text">Upload Image</span>
                         </button>
                     </div>
                     
-                    <div class="mode-content active" id="upload-mode">
+                    <div class="mode-content active" id="capture-mode">
+                        <div class="capture-container">
+                            <div class="capture-view" id="capture-view">
+                                <div class="capture-placeholder" id="capture-placeholder">
+                                    <div class="placeholder-content">
+                                        <h3 class="placeholder-title">Image Capture</h3>
+                                        <p class="placeholder-text">Click capture to take a photo using your camera</p>
+                                    </div>
+                                </div>
+                                <video id="video-stream" autoplay playsinline muted style="display: none;"></video>
+                                <canvas id="capture-canvas" style="display: none;"></canvas>
+                            </div>
+                            
+                            <div class="capture-preview" id="capture-preview" style="display: none;">
+                                <img id="captured-image" src="" alt="Captured">
+                                <div class="preview-actions">
+                                    <button class="btn btn-primary" id="analyze-capture-btn">
+                                        Analyze Image
+                                    </button>
+                                    <button class="btn btn-secondary" id="retake-btn">
+                                        Retake Photo
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="capture-controls">
+                                <button class="btn btn-primary" id="start-capture" style="display: inline-block;">
+                                    Start Camera
+                                </button>
+                                <button class="btn btn-primary" id="capture-btn" style="display: none;">
+                                    Capture Photo
+                                </button>
+                                <button class="btn btn-danger" id="stop-capture" style="display: none;">
+                                    Stop Camera
+                                </button>
+                            </div>
+                            
+                            <div class="capture-help" id="capture-help">
+                                <p class="help-text"><strong>Camera Permission Required:</strong> When you click "Start Camera", your browser will ask for camera permission. Please click "Allow" to enable image capture.</p>
+                                <p class="help-text"><strong>Privacy:</strong> All processing is done locally your image never leaves your device.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mode-content" id="upload-mode">
                         <div class="upload-container">
                             <div class="upload-area" id="upload-area">
                                 <div class="upload-content">
@@ -57,39 +101,6 @@
                                         Clear
                                     </button>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mode-content" id="camera-mode">
-                        <div class="camera-container">
-                            <div class="camera-view" id="camera-view">
-                                <div class="camera-placeholder" id="camera-placeholder">
-                                    <div class="placeholder-content">
-                                        <h3 class="placeholder-title">Camera Ready</h3>
-                                        <p class="placeholder-text">Click start to begin real-time detection</p>
-                                    </div>
-                                </div>
-                                <video id="video-stream" autoplay playsinline muted style="display: none;"></video>
-                            </div>
-                            
-                            <div class="camera-controls">
-                                <button class="btn btn-primary" id="start-camera">
-                                    Start Camera
-                                </button>
-                                <button class="btn btn-danger" id="stop-camera" style="display: none;">
-                                    Stop Camera
-                                </button>
-                            </div>
-                            
-                            <div class="camera-help" id="camera-help">
-                                <p class="help-text"><strong>Camera Permission Required:</strong> When you click "Start Camera", your browser will ask for camera permission. Please click "Allow" to enable face detection.</p>
-                                <p class="help-text"><strong>Privacy:</strong> All processing is done locally your video never leaves your device.</p>
-                            </div>
-                            
-                            <div class="camera-status" id="camera-status">
-                                <span class="status-dot"></span>
-                                <span class="status-text">Ready</span>
                             </div>
                         </div>
                     </div>
@@ -134,9 +145,9 @@
                     </div>
                     
                     <div class="feature-card">
-                        <h3 class="feature-title">Real-time</h3>
+                        <h3 class="feature-title">Image-Based</h3>
                         <p class="feature-description">
-                            Instant detection and analysis with live camera feed processing
+                            Capture or upload images for mask detection analysis
                         </p>
                     </div>
                     
@@ -179,7 +190,7 @@
     <footer class="footer">
         <div class="footer-content">
             <div class="footer-text">
-                <span>Real Time Face Mask Detection System</span>
+                <span>Face Mask Detection System using Deep Learning</span>
             </div>
         </div>
     </footer>
