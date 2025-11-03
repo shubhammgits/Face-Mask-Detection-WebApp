@@ -5,6 +5,7 @@ from flask_cors import CORS
 import base64
 import logging
 import gc
+import time
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -29,7 +30,6 @@ try:
     except Exception as e:
         print(f"Warning: Could not configure TensorFlow memory: {e}")
         
-    # Additional TensorFlow memory optimizations
     if hasattr(tf, 'config'):
         try:
             tf.config.threading.set_inter_op_parallelism_threads(1)
@@ -72,6 +72,9 @@ model = None
 face_cascade = None
 model_loaded = False
 cascade_loaded = False
+
+last_frame_time = 0
+frame_interval = 0.5
 
 def load_model_and_cascade():
     global model, face_cascade, model_loaded, cascade_loaded
@@ -521,6 +524,98 @@ def upload_file():
         logger.error(f"Error processing upload: {str(e)}")
         gc.collect()
         return jsonify({'success': False, 'error': f'Processing failed: {str(e)}'}), 500
+
+@app.route('/process_frame', methods=['POST'])
+def process_frame():
+    global last_frame_time, frame_interval
+    
+    print("=== PROCESS FRAME ENDPOINT CALLED ===")
+    
+    current_time = time.time()
+    if current_time - last_frame_time < frame_interval:
+        print("Frame processing rate limited")
+        return jsonify({'success': True, 'detections': [], 'rate_limited': True})
+    
+    last_frame_time = current_time
+    
+    try:
+        if 'frame' not in request.files:
+            print("No frame provided in request")
+            return jsonify({'success': False, 'error': 'No frame provided'}), 400
+            
+        file = request.files['frame']
+        
+        file.seek(0, os.SEEK_END)
+        file_length = file.tell()
+        file.seek(0)
+        
+        if file_length > 2 * 1024 * 1024:
+            print("Frame too large")
+            return jsonify({'success': False, 'error': 'Frame too large'}), 400
+        
+        file_bytes = file.read()
+        if len(file_bytes) == 0:
+            print("Empty frame data")
+            return jsonify({'success': False, 'error': 'Empty frame data'}), 400
+        
+        nparr = np.frombuffer(file_bytes, np.uint8)
+        imdecode_func = getattr(cv2_module, 'imdecode', None) if cv2_module is not None else None
+        imread_color = getattr(cv2_module, 'IMREAD_COLOR', None) if cv2_module is not None else None
+        if imdecode_func is not None and imread_color is not None:
+            image = imdecode_func(nparr, imread_color)
+        else:
+            io_attr = getattr(tf_module, 'io', None) if tf_module is not None else None
+            if io_attr is not None:
+                decode_image_func = getattr(io_attr, 'decode_image', None)
+                if decode_image_func is not None:
+                    image = decode_image_func(file_bytes, channels=3)
+                    if hasattr(image, 'numpy'):
+                        image = image.numpy()
+                else:
+                    image = None
+            else:
+                image = None
+        
+        if image is None or image.size == 0:
+            print("Invalid frame or empty image")
+            return jsonify({'success': False, 'error': 'Invalid frame'}), 400
+            
+        print(f"Frame decoded successfully. Shape: {image.shape}")
+        
+        max_dimension = 480
+        height, width = image.shape[:2]
+        if max(height, width) > max_dimension:
+            scale = max_dimension / max(height, width)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            resize_func = getattr(cv2_module, 'resize', None) if cv2_module is not None else None
+            if resize_func is not None:
+                image = resize_func(image, (new_width, new_height))
+                print(f"Resized image to {new_width}x{new_height}")
+        
+        print("Detecting faces and masks in frame...")
+        detections = detect_faces_and_masks(image)
+        print(f"Found {len(detections)} faces in frame")
+        
+        try:
+            del image
+            del nparr
+            del file_bytes
+        except:
+            pass
+        gc.collect()
+        
+        print("=== FRAME PROCESSING COMPLETE ===")
+        return jsonify({
+            'success': True,
+            'detections': detections
+        })
+        
+    except Exception as e:
+        print(f"Error processing frame: {str(e)}")
+        logger.error(f"Error processing frame: {str(e)}", exc_info=True)
+        gc.collect()
+        return jsonify({'success': False, 'error': f'Frame processing failed: {str(e)}'}), 500
 
 @app.route('/health')
 def health_check():

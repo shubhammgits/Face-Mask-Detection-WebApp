@@ -381,12 +381,11 @@ body::before {
     justify-content: center;
 }
 
-/* Capture styles */
-.capture-container {
+.camera-container {
     text-align: center;
 }
 
-.capture-view {
+.camera-view {
     position: relative;
     width: 100%;
     height: 400px;
@@ -400,6 +399,10 @@ body::before {
     border: 1px solid var(--border-primary);
 }
 
+.camera-view.streaming {
+    height: 400px;
+}
+
 #video-stream {
     width: 100%;
     height: 100%;
@@ -407,7 +410,7 @@ body::before {
     display: none;
 }
 
-.capture-placeholder {
+.camera-placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -434,6 +437,118 @@ body::before {
     color: var(--text-secondary);
     font-size: 1rem;
     margin-bottom: 0.5rem;
+}
+
+.detection-box {
+    position: absolute;
+    pointer-events: none;
+    z-index: 1000;
+    box-sizing: border-box;
+    transform: translateZ(0);
+    will-change: left, top, width, height;
+}
+
+.detection-label-box {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    box-sizing: border-box;
+    transform: translateZ(0);
+}
+
+.camera-help {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    backdrop-filter: var(--glass-backdrop);
+}
+
+.help-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0.5rem 0;
+    line-height: 1.4;
+}
+
+.help-text strong {
+    color: var(--accent-primary);
+}
+
+.camera-controls {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: center;
+    margin-bottom: 0.8rem;
+}
+
+.camera-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: pulse 2s infinite;
+}
+
+.camera-status.active .status-dot {
+    background: var(--success);
+}
+
+.camera-status.error .status-dot {
+    background: var(--danger);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.capture-container {
+    text-align: center;
+}
+
+.capture-view {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-primary);
+}
+
+#capture-video-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.capture-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background: var(--glass-bg);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
 }
 
 .capture-preview {
@@ -463,17 +578,6 @@ body::before {
     border: 1px solid var(--border-primary);
     border-radius: 8px;
     backdrop-filter: var(--glass-backdrop);
-}
-
-.help-text {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin: 0.5rem 0;
-    line-height: 1.4;
-}
-
-.help-text strong {
-    color: var(--accent-primary);
 }
 
 .results-panel {
@@ -838,12 +942,12 @@ body::before {
         min-height: 150px;
     }
     
-    .capture-view video {
+    .camera-view.streaming video {
         height: 300px;
         max-height: 300px;
     }
     
-    .capture-view .capture-placeholder {
+    .camera-view.streaming .camera-placeholder {
         height: 300px;
         max-height: 300px;
     }
@@ -852,7 +956,7 @@ body::before {
         font-size: 1rem;
     }
     
-    .capture-placeholder {
+    .camera-placeholder {
         height: 150px;
         max-height: 150px;
     }
@@ -861,7 +965,7 @@ body::before {
         font-size: 1rem;
     }
     
-    .capture-controls {
+    .camera-controls {
         flex-direction: column;
         gap: 0.5rem;
     }
@@ -924,12 +1028,12 @@ body::before {
         padding: 1.5rem 0.5rem;
     }
     
-    .capture-view video {
+    .camera-view.streaming video {
         height: 240px;
         max-height: 240px;
     }
     
-    .capture-view .capture-placeholder {
+    .camera-view.streaming .camera-placeholder {
         height: 240px;
         max-height: 240px;
     }
@@ -938,7 +1042,7 @@ body::before {
         flex-direction: column;
     }
     
-    .capture-placeholder {
+    .camera-placeholder {
         height: 120px;
         max-height: 120px;
     }
